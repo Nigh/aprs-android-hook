@@ -78,6 +78,10 @@ components:
   workspace:
     backgroundColor: "{colors.base-100}"
     rounded: "{rounded.box}"
+  badge-outline:
+    backgroundColor: "transparent"
+    textColor: "{colors.base-content}"
+    rounded: "{rounded.selector}"
 ---
 
 # Design System: APRS 轨迹

@@ -199,6 +199,14 @@
       "description": "Flat bordered region enclosing list and map; no decorative card elevation.",
       "html": "<section class=\"ds-workspace\"><h2 class=\"ds-heading\">路径列表</h2><p class=\"ds-empty\">这个日期范围还没有路径</p></section>",
       "css": ".ds-workspace{overflow:hidden;border:1px solid var(--color-base-300);border-radius:var(--radius-box);background:var(--color-base-100);color:var(--color-base-content);font-family:var(--font-sans)}.ds-heading{margin:0;padding:1rem 1.25rem;border-bottom:1px solid var(--color-base-300);font-size:var(--font-size-lg);font-weight:var(--font-weight-semibold)}.ds-empty{margin:0;padding:2rem 1.25rem;line-height:var(--line-height-relaxed)}"
+    },
+    {
+      "name": "Token count badge",
+      "kind": "chip",
+      "refersTo": "badge-outline",
+      "description": "Existing outline badge counts registered upload tokens.",
+      "html": "<span class=\"ds-badge\">1 / 16</span>",
+      "css": ".ds-badge{display:inline-flex;align-items:center;justify-content:center;height:calc(var(--size-selector) * 6);padding:0 .75rem;border:1px solid currentColor;border-radius:var(--radius-selector);background:transparent;color:var(--color-base-content);font:var(--font-size-sm)/var(--line-height-normal) var(--font-sans)}"
     }
   ],
   "narrative": {
