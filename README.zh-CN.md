@@ -217,4 +217,3 @@ API 错误保留原有 `error` 信息，并新增稳定的 `code` 翻译键。�
 ## 许可证与来源
 
 MIT。前端基于 [svelte-static-pwa-template](https://github.com/Nigh/svelte-static-pwa-template)，保留其 [MIT 许可证](web/LICENSE)。设计 tokens 使用 [xianii-theme](https://github.com/Nigh/xianii-theme)；地图保留 OpenFreeMap / OpenMapTiles / OpenStreetMap 署名。
-
