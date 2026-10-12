@@ -1,0 +1,231 @@
+{
+  "mode": "operate",
+  "authority": "https://github.com/Nigh/xianii-theme",
+  "theme": "xianii",
+  "tokens": {
+    "surface": "--color-base-100",
+    "background": "--color-base-200",
+    "border": "--color-base-300",
+    "selection": "--color-primary",
+    "endpoint": "--color-accent",
+    "focus": "--color-focus",
+    "font": "--font-sans",
+    "radius": "--radius-box"
+  },
+  "desktop": "date filters and inline totals above adjacent track list and map",
+  "mobile": "two-column filters; vertically stacked track list and map",
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-12T18:50:40.463Z",
+  "title": "Design System: APRS 轨迹",
+  "extensions": {
+    "sources": [
+      "web/src/app.css",
+      "web/src/app.html",
+      "web/src/routes/+page.svelte",
+      "web/src/lib/TrackMap.svelte",
+      "web/src/lib/Tokens.svelte",
+      "web/node_modules/@xianii/design-system/tokens.css",
+      "web/node_modules/@xianii/design-system/theme.css"
+    ],
+    "tokenMappings": {
+      "surface": "--color-base-100",
+      "background": "--color-base-200",
+      "border": "--color-base-300",
+      "selection": "--color-primary",
+      "endpoint": "--color-accent",
+      "focus": "--color-focus",
+      "font": "--font-sans",
+      "radius": "--radius-box",
+      "muted": "--color-text-muted",
+      "hover": "--color-interactive-hover",
+      "active": "--color-interactive-active",
+      "overlay": "--color-overlay",
+      "field-radius": "--radius-field",
+      "field-label": "--space-field-label",
+      "field-help": "--space-field-help"
+    },
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Soft pink"
+      },
+      "accent": {
+        "role": "secondary",
+        "displayName": "Soft teal"
+      },
+      "base-100": {
+        "role": "neutral",
+        "displayName": "Raised charcoal"
+      },
+      "base-200": {
+        "role": "neutral",
+        "displayName": "Deep charcoal"
+      },
+      "base-300": {
+        "role": "neutral",
+        "displayName": "Divider gray"
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "App headline",
+        "purpose": "APRS 轨迹 header; --font-size-2xl."
+      },
+      "title": {
+        "displayName": "Workspace title",
+        "purpose": "List and map headings; --font-size-lg."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Chinese operational copy; --font-size-body."
+      },
+      "label": {
+        "displayName": "UI label",
+        "purpose": "Field labels; --font-size-ui."
+      },
+      "metadata": {
+        "displayName": "Monospace metadata",
+        "purpose": "Device hashes; --font-mono and --font-size-xs."
+      }
+    },
+    "breakpoints": [
+      {
+        "name": "filters-three-columns",
+        "value": "1100px"
+      },
+      {
+        "name": "stacked-mobile",
+        "value": "760px"
+      }
+    ],
+    "motion": [
+      {
+        "name": "adapter-control-transition",
+        "value": "0.2s cubic-bezier(0,0,.2,1)",
+        "purpose": "Existing daisyUI control hover/press transitions."
+      },
+      {
+        "name": "map-fit",
+        "value": "0ms",
+        "purpose": "Track fitting has duration: 0."
+      }
+    ],
+    "focus": {
+      "value": "3px solid var(--color-focus)",
+      "offset": "3px",
+      "purpose": "App focus-visible; adapter fields retain their own focus treatment."
+    },
+    "elevation": {
+      "depth": "var(--depth)",
+      "noise": "var(--noise)",
+      "purpose": "Flat regions; retain existing daisyUI control depth and MapLibre defaults."
+    },
+    "map": {
+      "style": "https://tiles.openfreemap.org/styles/dark",
+      "lineColor": "--color-primary",
+      "pointColor": "--color-accent",
+      "startColor": "--color-accent",
+      "endColor": "--color-primary",
+      "lineWidth": 4,
+      "pointRadius": 4,
+      "endpointSize": "28px"
+    },
+    "review": {
+      "disposition": "SHIP",
+      "materialFindings": [],
+      "screenshotsChecked": [
+        ".impeccable/review/desktop.jpg",
+        ".impeccable/review/mobile.jpg",
+        ".impeccable/review/user-992.jpg",
+        ".impeccable/review/tokens.jpg",
+        ".impeccable/review/tokens-mobile.jpg"
+      ],
+      "basis": "Current supplied captures and implementation reviewed; no material visual findings."
+    }
+  },
+  "components": [
+    {
+      "name": "Primary button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Query tracks or register a phone token.",
+      "html": "<button class=\"ds-button ds-primary\">查看路径</button>",
+      "css": ".ds-button{display:inline-flex;align-items:center;justify-content:center;height:calc(var(--size-field) * 10);padding:0 1rem;border:1px solid color-mix(in oklab,var(--ds-action) 95%,#000);border-radius:var(--radius-field);background:var(--ds-action);color:var(--ds-text);font:var(--font-weight-medium) var(--font-size-ui)/var(--line-height-normal) var(--font-sans);transition:color .2s cubic-bezier(0,0,.2,1),background-color .2s cubic-bezier(0,0,.2,1),transform .2s cubic-bezier(0,0,.2,1);box-shadow:0 .5px 0 .5px oklch(100% 0 0 / 6%) inset,0 3px 2px -2px color-mix(in oklab,var(--ds-action) 30%,transparent),0 4px 3px -2px color-mix(in oklab,var(--ds-action) 30%,transparent)}.ds-button:hover{background:color-mix(in oklab,var(--ds-action) 93%,#000)}.ds-button:active{background:color-mix(in oklab,var(--ds-action) 95%,#000)}.ds-button:focus-visible{outline:3px solid var(--color-focus);outline-offset:3px}.ds-primary{--ds-action:var(--color-primary);--ds-text:var(--color-primary-content)}"
+    },
+    {
+      "name": "Ghost button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Secondary actions such as logout or pagination.",
+      "html": "<button class=\"ds-ghost\">退出登录</button>",
+      "css": ".ds-ghost{padding:0 .75rem;height:calc(var(--size-field) * 8);border:1px solid transparent;border-radius:var(--radius-field);background:transparent;color:var(--color-base-content);font:var(--font-weight-medium) var(--font-size-sm)/var(--line-height-normal) var(--font-sans);cursor:pointer;transition:background-color .2s cubic-bezier(0,0,.2,1)}.ds-ghost:hover,.ds-ghost:active{background:var(--color-interactive-hover)}.ds-ghost:focus-visible{outline:3px solid var(--color-focus);outline-offset:3px}"
+    },
+    {
+      "name": "Destructive button",
+      "kind": "button",
+      "refersTo": "button-error",
+      "description": "Explicit confirmation in the native token-delete dialog.",
+      "html": "<button class=\"ds-button ds-error\">删除 token</button>",
+      "css": ".ds-button{display:inline-flex;align-items:center;justify-content:center;height:calc(var(--size-field) * 10);padding:0 1rem;border:1px solid color-mix(in oklab,var(--ds-action) 95%,#000);border-radius:var(--radius-field);background:var(--ds-action);color:var(--ds-text);font:var(--font-weight-medium) var(--font-size-ui)/var(--line-height-normal) var(--font-sans);transition:color .2s cubic-bezier(0,0,.2,1),background-color .2s cubic-bezier(0,0,.2,1),transform .2s cubic-bezier(0,0,.2,1);box-shadow:0 .5px 0 .5px oklch(100% 0 0 / 6%) inset,0 3px 2px -2px color-mix(in oklab,var(--ds-action) 30%,transparent),0 4px 3px -2px color-mix(in oklab,var(--ds-action) 30%,transparent)}.ds-button:hover{background:color-mix(in oklab,var(--ds-action) 93%,#000)}.ds-button:active{background:color-mix(in oklab,var(--ds-action) 95%,#000)}.ds-button:focus-visible{outline:3px solid var(--color-focus);outline-offset:3px}.ds-error{--ds-action:var(--color-error);--ds-text:var(--color-error-content)}"
+    },
+    {
+      "name": "Labelled field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Theme surface and real Chinese label; native input behavior.",
+      "html": "<label class=\"ds-field\"><span>备注（可选）</span><input class=\"ds-input\" placeholder=\"例如：日常使用的手机\"></label>",
+      "css": ".ds-field{display:grid;gap:var(--space-field-label);font:var(--font-size-ui)/var(--line-height-normal) var(--font-sans);color:var(--color-base-content)}.ds-input{height:calc(var(--size-field) * 10);padding:0 .75rem;border:1px solid color-mix(in oklab,var(--color-base-content) 20%,transparent);border-radius:var(--radius-field);background:var(--color-base-100);color:var(--color-base-content);font:inherit;caret-color:var(--color-primary)}.ds-input::placeholder{color:var(--color-base-content);opacity:.5}.ds-input:focus{outline:2px solid var(--color-base-content);outline-offset:2px}"
+    },
+    {
+      "name": "Selected tab",
+      "kind": "nav",
+      "refersTo": "tab-selected",
+      "description": "Primary text and underline mark current panel; actual app adds keyboard roving tabindex.",
+      "html": "<div class=\"ds-tabs\" role=\"tablist\" aria-label=\"功能\"><button class=\"ds-tab\" role=\"tab\" aria-selected=\"true\">路径记录</button><button class=\"ds-tab\" role=\"tab\" aria-selected=\"false\" tabindex=\"-1\">上传设置</button></div>",
+      "css": ".ds-tabs{display:flex;gap:1.5rem;border-bottom:1px solid var(--color-base-300)}.ds-tab{padding:.75rem .25rem;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--color-text-muted);font:var(--font-size-ui)/var(--line-height-normal) var(--font-sans);cursor:pointer}.ds-tab:hover{background:var(--color-interactive-hover);color:var(--color-base-content)}.ds-tab[aria-selected=\"true\"]{color:var(--color-primary);border-bottom-color:var(--color-primary);font-weight:var(--font-weight-semibold)}.ds-tab:focus-visible{outline:3px solid var(--color-focus);outline-offset:3px}"
+    },
+    {
+      "name": "Selected track",
+      "kind": "custom",
+      "refersTo": "track-selected",
+      "description": "Divided full-width selection button with measurements.",
+      "html": "<button class=\"ds-track\" aria-pressed=\"true\"><span class=\"ds-id\">测试行程</span><span class=\"ds-meta\">10/13 02:16 — 10/13 02:22</span><span>391 m　6 分钟　4 点</span></button>",
+      "css": ".ds-track{display:grid;gap:.5rem;width:100%;padding:1.1rem 1.25rem;text-align:left;border:0;border-bottom:1px solid var(--color-base-300);background:var(--color-interactive-active);color:var(--color-base-content);font:var(--font-size-sm)/var(--line-height-normal) var(--font-sans);font-variant-numeric:tabular-nums;cursor:pointer}.ds-track:hover{background:var(--color-interactive-hover)}.ds-id{color:var(--color-primary);font-weight:var(--font-weight-semibold)}.ds-meta{color:var(--color-text-muted)}.ds-track:focus-visible{outline:3px solid var(--color-focus);outline-offset:3px}"
+    },
+    {
+      "name": "Workspace container",
+      "kind": "custom",
+      "refersTo": "workspace",
+      "description": "Flat bordered region enclosing list and map; no decorative card elevation.",
+      "html": "<section class=\"ds-workspace\"><h2 class=\"ds-heading\">路径列表</h2><p class=\"ds-empty\">这个日期范围还没有路径</p></section>",
+      "css": ".ds-workspace{overflow:hidden;border:1px solid var(--color-base-300);border-radius:var(--radius-box);background:var(--color-base-100);color:var(--color-base-content);font-family:var(--font-sans)}.ds-heading{margin:0;padding:1rem 1.25rem;border-bottom:1px solid var(--color-base-300);font-size:var(--font-size-lg);font-weight:var(--font-weight-semibold)}.ds-empty{margin:0;padding:2rem 1.25rem;line-height:var(--line-height-relaxed)}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Xianii private track workspace",
+    "overview": "The established [Nigh/xianii-theme](https://github.com/Nigh/xianii-theme) world is authoritative. The shipped Chinese interface uses `data-theme=\"xianii\"` and the installed `@xianii/design-system/theme.css` entry, which combines the Tailwind and daisyUI adapters. These extracted values describe the current dark theme; upstream CSS custom properties remain the runtime source of truth.\n\nThe interface is compact and operational: dated journeys, measurements, and a dark map share one workspace. Implement directly in code and inspect the rendered result. The app mark is a geometric SVG; no generated raster assets or visual comp are required.\n\n",
+    "keyCharacteristics": [
+      "Dark neutral surfaces with restrained pink selection and teal map points.",
+      "Flat filters and inline totals above divided list and map regions.",
+      "Chinese labels, readable measurements, and explicit interaction states."
+    ],
+    "rules": [
+      {
+        "name": "The Theme Authority Rule",
+        "body": "Use the existing public Xianii custom properties; do not create an independent palette or rename upstream tokens.",
+        "section": "colors"
+      }
+    ],
+    "dos": [
+      "Do use the existing Xianii tokens and adapter components for every added surface.",
+      "Do preserve Chinese labels and the flat filter, summary, list/map hierarchy.",
+      "Do keep selected state, keyboard focus, labels, and destructive confirmation explicit.",
+      "Do inspect desktop, intermediate, and stacked mobile layouts after visual changes."
+    ],
+    "donts": [
+      "Don't replace the established theme with a speculative visual world.",
+      "Don't turn inline totals or divided rows into decorative cards.",
+      "Don't hide map failure behind an unusable workspace."
+    ]
+  }
+}

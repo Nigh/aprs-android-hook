@@ -1,0 +1,19 @@
+services:
+  app:
+    build: .
+    image: aprs-android-hook:local
+    restart: unless-stopped
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${PORT:-18080}:8080"
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      PUBLIC_URL: ${PUBLIC_URL:-}
+    volumes:
+      - data:/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  data:

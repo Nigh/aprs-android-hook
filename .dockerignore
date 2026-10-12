@@ -1,0 +1,10 @@
+.git
+.impeccable
+data
+.env
+web/node_modules
+web/.svelte-kit
+web/build
+web/.yarn
+aprs-android-hook
+aprs-android-hook.exe
