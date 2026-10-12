@@ -94,10 +94,27 @@ h3 {
 	color: var(--color-error);
 }
 .auth-shell {
-	min-height: 100svh;
+	min-height: calc(100svh - 4rem);
 	display: grid;
 	place-items: center;
 	padding: 2rem 1.25rem;
+}
+.language-toolbar {
+	display: flex;
+	justify-content: flex-end;
+	align-items: center;
+	height: 4rem;
+	max-width: 1600px;
+	margin: auto;
+	padding-inline: 1.25rem;
+}
+.language-select {
+	display: flex;
+	align-items: center;
+	gap: var(--space-field-label);
+}
+.language-select .select {
+	width: 9rem;
 }
 .auth-panel {
 	width: min(100%, 26rem);

@@ -17,9 +17,10 @@ export default defineConfig({
 				runtimeCaching: []
 			},
 			manifest: {
-				name: 'APRS 轨迹',
-				short_name: 'APRS 轨迹',
-				description: 'aprs-android 私有定位记录与地图',
+				name: 'APRS Tracks',
+				short_name: 'APRS Tracks',
+				description: 'Private aprs-android location history and maps',
+				lang: 'en',
 				scope: '/',
 				start_url: '/',
 				background_color: '#212121',

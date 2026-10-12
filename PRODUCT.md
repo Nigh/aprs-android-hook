@@ -15,7 +15,7 @@ Self-hosting aprs-android users privately review their own GPS history. One acco
 Date and device filters, paginated track list, map, distance and recorded-duration totals. Separate reporting ID/device streams; gaps over 30 minutes split tracks. Raw fixes persist for future changes. Duration includes stops within a segment. Date boundaries use the deployment timezone, default Asia/Shanghai.
 
 ## Brand commitments
-Use Nigh/xianii-theme tokens and interaction constraints. Chinese interface and user documentation. Dark theme and OpenFreeMap dark map matching aprs-android.
+Use Nigh/xianii-theme tokens and interaction constraints. English-default interface and README, with Simplified Chinese available. Extensible locale registry and per-language catalogs; browser-local language preference independent of deployment timezone. Dark theme and OpenFreeMap dark map matching aprs-android.
 
 ## Confirmed interface
 Desktop: filters and totals above a track list and map side by side. Mobile: list and map stacked. Build directly in code; inspect desktop and mobile. No generated visual mockups required.
