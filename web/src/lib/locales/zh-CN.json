@@ -145,5 +145,10 @@
 	"maplibre.NavigationControl.ZoomOut": "缩小",
 	"maplibre.NavigationControl.ResetBearing": "拖动旋转地图，点击恢复北向",
 	"maplibre.AttributionControl.ToggleAttribution": "切换地图署名",
-	"maplibre.Popup.Close": "关闭详情"
+	"maplibre.Popup.Close": "关闭详情",
+	"tokens.webhookURL": "Webhook HTTPS 地址",
+	"tokens.copyURL": "复制地址",
+	"tokens.webhookHelp": "将此完整地址粘贴到 aprs-android 的设置 → Webhook 中，然后点击 Test。",
+	"success.webhookCopied": "Webhook 地址已复制",
+	"error.webhookCopy": "无法复制地址，请手动选择并复制上方地址。"
 }

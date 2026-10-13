@@ -95,7 +95,7 @@ networks:
 ## 连接 aprs-android
 
 1. 在手机 aprs-android 打开 **Settings → Webhook**，选择 **Copy token**。token 由手机生成，更新应用时保持不变，直到主动刷新。
-2. 登录网页，进入 **上传设置**，粘贴手机 token，填写便于辨认的备注并登记。
+2. 登录网页，进入 **上传设置**，粘贴手机 token，填写便于辨认的备注并登记。点击页面显示的 Webhook HTTPS 地址即可复制完整地址，粘贴到手机应用后点击 Test。
 3. 在手机启用 **Enable webhook**，填写：
    - **Webhook HTTPS URL**：`https://tracks.example.com/api/webhook`
    - **Webhook reporting ID**：一个用于区分记录的名称，例如 `my-phone`；它不是网页登录用户名。

@@ -151,5 +151,10 @@
 	"maplibre.NavigationControl.ZoomOut": "Zoom out",
 	"maplibre.NavigationControl.ResetBearing": "Drag to rotate map, click to reset north",
 	"maplibre.AttributionControl.ToggleAttribution": "Toggle attribution",
-	"maplibre.Popup.Close": "Close popup"
+	"maplibre.Popup.Close": "Close popup",
+	"tokens.webhookURL": "Webhook HTTPS URL",
+	"tokens.copyURL": "Copy URL",
+	"tokens.webhookHelp": "Paste this complete URL into Settings → Webhook in aprs-android, then run Test.",
+	"success.webhookCopied": "Webhook URL copied.",
+	"error.webhookCopy": "Could not copy the URL. Select and copy the address manually."
 }
