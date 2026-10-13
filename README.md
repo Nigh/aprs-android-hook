@@ -95,7 +95,7 @@ When using containerized Caddy as the only public entry point, keep `BIND_ADDRES
 ## Connect aprs-android
 
 1. On your phone, open **Settings → Webhook** in aprs-android and select **Copy token**. The phone generates the token; it survives app updates until you explicitly refresh it.
-2. Sign in to the web app, open **Upload settings**, paste the phone token, and optionally add a note.
+2. Sign in to the web app, open **Upload settings**, paste the phone token, and optionally add a note. Click the displayed Webhook HTTPS URL to copy the complete address into the phone app, then run Test.
 3. On your phone, turn on **Enable webhook** and enter:
    - **Webhook HTTPS URL**: `https://tracks.example.com/api/webhook`
    - **Webhook reporting ID**: a name such as `my-phone` to identify your records. This is separate from your web login username.

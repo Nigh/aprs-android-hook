@@ -12,16 +12,28 @@
 	let busy = $state(false);
 	let loading = $state(true);
 	let pending = $state(null);
+	let webhookURL = $state('');
 	let dialog;
 	async function load() {
 		tokens = await api('tokens');
 		notes = Object.fromEntries(tokens.map((token) => [token.key, token.note]));
 	}
 	onMount(() => {
+		webhookURL = `${window.location.origin}/api/webhook`;
 		load()
 			.catch((e) => (error = e.code || 'error.requestFailed'))
 			.finally(() => (loading = false));
 	});
+	async function copyWebhookURL() {
+		error = '';
+		message = '';
+		try {
+			await window.navigator.clipboard.writeText(webhookURL);
+			message = 'success.webhookCopied';
+		} catch {
+			error = 'error.webhookCopy';
+		}
+	}
 	async function perform(action, success) {
 		busy = true;
 		error = '';
@@ -65,6 +77,20 @@
 	</p>
 	{#if error}<p class="notice error" role="alert">{$t(error)}</p>{/if}
 	{#if message}<p class="notice success" role="status">{$t(message)}</p>{/if}
+	<div class="field">
+		<span id="webhook-url-label">{$t('tokens.webhookURL')}</span>
+		<button
+			type="button"
+			class="btn webhook-url"
+			aria-labelledby="webhook-url-label webhook-url-value webhook-url-copy"
+			onclick={copyWebhookURL}
+			disabled={!webhookURL}
+		>
+			<code id="webhook-url-value">{webhookURL}</code>
+			<span id="webhook-url-copy">{$t('tokens.copyURL')}</span>
+		</button>
+		<p class="muted small">{$t('tokens.webhookHelp')}</p>
+	</div>
 	<form class="token-form" onsubmit={add}>
 		<label class="field"
 			><span>{$t('tokens.phone')}</span><input
