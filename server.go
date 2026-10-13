@@ -269,6 +269,7 @@ func (a *app) logout(w http.ResponseWriter, r *http.Request) {
 
 var tokenPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 var devicePattern = regexp.MustCompile(`^[0-9a-f]{16}$`)
+var sessionPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
 type tokenInput struct {
 	Token string `json:"token"`
@@ -388,8 +389,12 @@ func (a *app) webhook(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &p) {
 		return
 	}
-	if p.Type != "location" && p.Type != "test" && p.Type != "start" && p.Type != "end" {
+	if p.Type != "location" && p.Type != "test" {
 		fail(w, 400, "上传类型无效")
+		return
+	}
+	if !sessionPattern.MatchString(p.Session) {
+		fail(w, 400, "session_id 必须为标准小写 UUID v4")
 		return
 	}
 	if p.Type != "test" && (strings.TrimSpace(p.ID) == "" || utf8.RuneCountInString(p.ID) > 128 || !devicePattern.MatchString(p.Device) || p.Time <= 0 || p.Time > time.Now().Add(5*time.Minute).UnixMilli() || p.Lat == nil || p.Lon == nil || !finite(p.Lat) || !finite(p.Lon) || *p.Lat < -90 || *p.Lat > 90 || *p.Lon < -180 || *p.Lon > 180 || !finite(p.Accuracy) || !finite(p.Speed) || !finite(p.Bearing) || !finite(p.Altitude) || (p.Accuracy != nil && *p.Accuracy < 0) || (p.Speed != nil && *p.Speed < 0) || (p.Bearing != nil && (*p.Bearing < 0 || *p.Bearing >= 360))) {
@@ -416,7 +421,7 @@ func (a *app) webhook(w http.ResponseWriter, r *http.Request) {
 		respond(w, 200, map[string]any{"ok": true, "type": "test"})
 		return
 	}
-	_, err = tx.Exec(`INSERT INTO points(reporting_id,device_hash,timestamp_ms,latitude,longitude,accuracy_m,speed_mps,bearing_deg,altitude_m,type) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(reporting_id,device_hash,timestamp_ms,type) DO NOTHING`, p.ID, p.Device, p.Time, p.Lat, p.Lon, p.Accuracy, p.Speed, p.Bearing, p.Altitude, p.Type)
+	_, err = tx.Exec(`INSERT INTO points(reporting_id,device_hash,session_id,timestamp_ms,latitude,longitude,accuracy_m,speed_mps,bearing_deg,altitude_m) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(reporting_id,device_hash,session_id,timestamp_ms) DO NOTHING`, p.ID, p.Device, p.Session, p.Time, p.Lat, p.Lon, p.Accuracy, p.Speed, p.Bearing, p.Altitude)
 	if err == nil {
 		_, err = tx.Exec("UPDATE tokens SET last_upload_ms=? WHERE key=?", time.Now().UnixMilli(), key)
 	}

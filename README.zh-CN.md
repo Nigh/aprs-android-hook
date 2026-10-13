@@ -117,44 +117,52 @@ networks:
 
 ```sh
 TOKEN='替换为手机上的64位token'
+SESSION_ID=$(python3 -c 'import uuid; print(uuid.uuid4())')
 curl --fail-with-body https://tracks.example.com/api/webhook \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  --data '{"type":"test"}'
+  --data "{\"type\":\"test\",\"session_id\":\"$SESSION_ID\"}"
 ```
 
-测试成功返回 HTTP 200 和 `{"ok":true,"type":"test"}`，请同时检查状态码和 JSON 响应。这验证连接与 token 认证，不保存定位，也不修改 token 最近上传时间；仍需真实定位上传来验证数据保存。`(0,0)` 是合法坐标，不作为测试标识。
+测试成功返回 HTTP 200 和 `{"ok":true,"type":"test"}`，请同时检查状态码和 JSON 响应。这验证连接、token 认证及生成的会话 ID 格式，不保存定位，也不修改 token 最近上传时间。服务端只校验 UUID 格式，无法验证客户端随机数的质量；仍需真实定位上传来验证数据保存。`(0,0)` 是合法坐标，不作为测试标识。
 
-### 记录包类型
+### 包类型与记录会话
 
-`POST /api/webhook` 要求提供以下一种 `type`：
+`POST /api/webhook` 的**每个请求**都必须明确提供 `type` 和合法的 `session_id`，包括测试包：
 
 | `type` | 行为 |
 | --- | --- |
-| `"location"` | 普通定位。 |
-| `"test"` | 校验 Bearer token 并返回测试响应，不要求或保存定位字段。 |
-| `"start"` | 保存定位，标记新记录的第一个点。 |
-| `"end"` | 保存定位，标记当前记录的最后一个点。 |
+| `"location"` | 将定位保存到指定记录会话。 |
+| `"test"` | 校验会话 ID 和 Bearer token 后返回测试响应，不要求或保存定位字段。 |
 
-缺失、空字符串、null 或未知类型返回 HTTP 400。起止包的**字段和校验与普通定位相同**：必须提供 `id`、`device_hash`、`timestamp_ms`、`latitude`、`longitude`，可选 `accuracy_m`、`speed_mps`、`bearing_deg`、`altitude_m` 可以为空。每个标记携带自身的实测位置和时间；起点与终点的坐标不必相等。例如：
+缺失、空字符串、null 或未知类型返回 HTTP 400，不再支持 `start`、`end`。定位包必须提供 `id`、`device_hash`、`session_id`、`timestamp_ms`、`latitude`、`longitude`；可选 `accuracy_m`、`speed_mps`、`bearing_deg`、`altitude_m` 可以为空。例如：
 
 ```json
-{"type":"start","id":"my-phone","device_hash":"0123456789abcdef","timestamp_ms":1767225600000,"latitude":31.2304,"longitude":121.4737,"accuracy_m":5,"speed_mps":null,"bearing_deg":null,"altitude_m":null}
+{"type":"location","id":"my-phone","device_hash":"0123456789abcdef","session_id":"e0629f7c-57a5-4d47-9afc-00c3c6d4d3f9","timestamp_ms":1767225600000,"latitude":31.2304,"longitude":121.4737,"accuracy_m":5,"speed_mps":null,"bearing_deg":null,"altitude_m":null}
 ```
 
-定位及起止包成功返回 `{"ok":true}`。按上报 ID、设备、时间戳和**类型**去重；重试相同包时不要改变类型。单位置记录的起止包可以使用相同时间戳；同时间戳按起始、普通定位、结束的顺序处理。
+`session_id` 必须是**标准小写 UUID v4**：包含连字符的36个 ASCII 字符，版本位为 `4`，变体位为 `8`、`9`、`a` 或 `b`。接受的格式：
 
-Android 每次上传必须明确指定 `type`，并主动发送起止标记来定义记录边界。仅更新服务端不会给 Android 增加测试按钮或起止包生成功能。
+```text
+^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$
+```
+
+缺失、null、大写、带多余空白或格式不符返回 HTTP 400 和 `error.sessionID`；其他 JSON 类型（数字、布尔值、数组或对象）返回 HTTP 400 和 `error.json`。服务端不去除空白或转换大小写。
+
+Android 推荐在开始记录时调用 `java.util.UUID.randomUUID().toString()` 生成一次 ID，**在获取 GPS 或尝试上传之前生成**。同一会话的所有点及重试使用相同 ID，网络/GPS 失败或切换上报渠道都不更换。每次新记录生成新 ID，不能重复使用以前的 ID。如果进程重启后恢复原记录，需要持久化并恢复其 ID；如果开始新记录，则生成新 ID。独立的手动单次上报使用新 ID；属于正在进行的记录的手动上报复用该记录 ID。每次 `test` 请求用同一生成方法产生新的随机 ID，不替换正在记录的会话 ID。上面的 UUID 仅作示例，Android 不能将它硬编码为固定值。
+
+定位上传成功返回 `{"ok":true}`。按 `(id, device_hash, session_id, timestamp_ms)` 去重，重试必须保留这些字段；不同会话的点可以使用相同时间戳。会话 ID 用于区分记录，不用于认证：所有请求仍需要已登记的 Bearer token，更换 token 本身不产生新会话。
+
+Android 必须实现此协议才能成功上传，仅更新服务端不会让手机自动生成会话 ID。本服务端面向全新数据库，不兼容以前的请求格式或数据库结构。
 
 ## 路径与统计怎么算
 
-- 同一上报 ID、同一设备的定位点按时间排序。`start` 开始新段；`end` 属于当前段并结束该段。新的 `start` 也会结束上一段未收到结束包的记录。`end` 后的点开始新段，即使间隔不足30分钟。
-- 明确开始的记录直到 `end` 或下一次 `start` 才结束，中间超过30分钟也不拆分。没有起始标记的定位点仍以**超过30分钟**的断档保底分段，恰好30分钟不拆分；孤立的 `end` 结束其所在的保底分段。无法区分结束包丢失和长时间停留，因此已开始的记录会保持开放直到下一个标记。
-- 距离为每段相邻点之间的球面距离总和，不是道路导航距离。GPS 漂移可能增加距离，本期不自动过滤漂移。
-- 记录时长为每段最后点减去第一点，再求和；包含明确标记记录中的停留和断档，不包含段与段之间的间隔，也不是实际运动时间。
-- 单点路径的距离和时长均为零。不同设备或上报 ID 不连接；更换 token 本身不拆分路径。
-- 日期段包含结束日期全天，按页面显示的部署时区解释。统计和地图只使用选定日期范围内的点；跨日路径在筛选范围边界裁剪。
-- 列表每页50条，汇总统计覆盖整个筛选结果。乱序到达的点会在下次查询时重新参与分段，因此路径可能变化。
+- 相同 `(id, device_hash, session_id)` 的所有已收到定位点组成一条路径，按定位时间排序。不同会话即使时间重叠或时间戳相同也不合并；同一会话中间断档多久都不拆分，不再使用30分钟保底或起止标记状态。
+- 距离为同一会话相邻点之间的球面距离总和，不是道路导航距离。GPS 漂移可能增加距离，本期不自动过滤漂移。缺失点无法恢复，断档两端的直线连接也可能与真实路线不同。
+- 记录时长为每个会话最后收到的定位时间减去最先收到的定位时间，再求和；包含会话内的停留和断档，不包含会话之间的间隔，也不是实际运动时间或用户点击开始/停止之间的精确时长。
+- 单点路径的距离和时长均为零。不同设备或上报 ID 即使复用同一会话 ID 也不连接；同一上报 ID、设备下复用会话 ID 会合并不同记录。
+- 日期段包含结束日期全天，按页面显示的部署时区解释。统计和地图只使用选定日期范围内的点；跨日会话在筛选范围边界裁剪。
+- 列表每页50条，汇总统计覆盖整个筛选结果。路径列表和详情均返回 `session_id`；路径 key 由上报 ID、设备和会话确定，不因日期裁剪或补传旧点而变化，但定位点和统计可以变化。
 
 地图由 [OpenFreeMap](https://openfreemap.org/) 提供，使用 OpenStreetMap 数据。浏览器需要能访问地图服务并支持 WebGL；地图加载失败不会阻止查看路径列表和统计。PWA 只缓存界面静态资源，离线时不能查询私有轨迹。
 
@@ -197,7 +205,7 @@ docker compose ps
 | 现象 | 检查 |
 | --- | --- |
 | 手机 HTTP 401 | token 是否已登记、是否刷新过；复制时是否完整 |
-| 手机 HTTP 400 | 定位字段或时间是否有效；测试 JSON 是否完整 |
+| 手机 HTTP 400 | 定位字段、时间及会话 ID 是否有效；测试 JSON 是否完整 |
 | 页面 HTTP 403 | `.env` 的 `PUBLIC_URL` 是否与浏览器地址一致，包括协议和端口 |
 | 登录后仍显示登录页 | 是否在 HTTP 地址使用了配置为 HTTPS 的服务；应通过 Caddy 的 HTTPS 地址访问 |
 | 没有路径 | 日期、部署时区、ID/设备筛选，以及手机是否收到 HTTP 200 |

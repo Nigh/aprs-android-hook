@@ -37,4 +37,6 @@ var errorCodes = map[string]string{
 	"页码无效":             "error.page",
 	"路径已变化，请刷新列表":      "error.trackChanged",
 	"无法读取设备":           "error.sourcesRead",
+
+	"session_id 必须为标准小写 UUID v4": "error.sessionID",
 }
