@@ -13,6 +13,9 @@ import (
 	"time"
 )
 
+const testSession = "e0629f7c-57a5-4d47-9afc-00c3c6d4d3f9"
+const otherSession = "f389b821-811a-4e78-b925-9940079e2011"
+
 func testApp(t *testing.T) *app {
 	t.Helper()
 	loc, err := time.LoadLocation("Asia/Shanghai")
@@ -174,7 +177,7 @@ func TestTokenLimitAndRevocation(t *testing.T) {
 	}
 	expect(t, request(a, "POST", "/api/tokens", fmt.Sprintf(`{"token":%q}`, strings.Repeat("b", 64)), cookie, ""), 409)
 	expect(t, request(a, "PATCH", "/api/tokens/"+key, `{"note":"日常手机"}`, cookie, ""), 200)
-	body := `{"type":"location","id":"设备1","device_hash":"1234567890abcdef","timestamp_ms":100000,"latitude":0,"longitude":0,"accuracy_m":null,"speed_mps":0,"bearing_deg":0,"altitude_m":-12.5}`
+	body := `{"type":"location","session_id":"e0629f7c-57a5-4d47-9afc-00c3c6d4d3f9","id":"设备1","device_hash":"1234567890abcdef","timestamp_ms":100000,"latitude":0,"longitude":0,"accuracy_m":null,"speed_mps":0,"bearing_deg":0,"altitude_m":-12.5}`
 	expect(t, request(a, "POST", "/api/webhook", body, nil, token), 200)
 	expect(t, request(a, "DELETE", "/api/tokens/"+key, "", cookie, ""), 200)
 	expect(t, request(a, "POST", "/api/webhook", body, nil, token), 401)
@@ -222,7 +225,7 @@ func TestHTTPSUpload(t *testing.T) {
 	addTestToken(t, a, cookie, token)
 	server := httptest.NewTLSServer(a.handler())
 	defer server.Close()
-	body := `{"type":"location","id":"connection-test","device_hash":"0123456789abcdef","timestamp_ms":1767225600000,"latitude":31.2304,"longitude":121.4737,"accuracy_m":5,"speed_mps":null,"bearing_deg":null,"altitude_m":null}`
+	body := `{"type":"location","session_id":"e0629f7c-57a5-4d47-9afc-00c3c6d4d3f9","id":"connection-test","device_hash":"0123456789abcdef","timestamp_ms":1767225600000,"latitude":31.2304,"longitude":121.4737,"accuracy_m":5,"speed_mps":null,"bearing_deg":null,"altitude_m":null}`
 	r, err := http.NewRequest("POST", server.URL+"/api/webhook", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
@@ -237,7 +240,7 @@ func TestHTTPSUpload(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf("HTTPS upload: %d", resp.StatusCode)
 	}
-	r, err = http.NewRequest("POST", server.URL+"/api/webhook", strings.NewReader(`{"type":"test"}`))
+	r, err = http.NewRequest("POST", server.URL+"/api/webhook", strings.NewReader(`{"type":"test","session_id":"e0629f7c-57a5-4d47-9afc-00c3c6d4d3f9"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,8 +261,8 @@ func TestWebhookValidationAndPersistence(t *testing.T) {
 	cookie := registerTestUser(t, a)
 	token := strings.Repeat("c", 64)
 	addTestToken(t, a, cookie, token)
-	valid := `{"type":"location","id":"用户\"1","device_hash":"1234567890abcdef","timestamp_ms":100000,"latitude":22.5,"longitude":113.9,"accuracy_m":null,"speed_mps":null,"bearing_deg":null,"altitude_m":null}`
-	for _, replacement := range []string{"", `"type":"",`, `"type":null,`} {
+	valid := `{"type":"location","session_id":"e0629f7c-57a5-4d47-9afc-00c3c6d4d3f9","id":"用户\"1","device_hash":"1234567890abcdef","timestamp_ms":100000,"latitude":22.5,"longitude":113.9,"accuracy_m":null,"speed_mps":null,"bearing_deg":null,"altitude_m":null}`
+	for _, replacement := range []string{"", `"type":"",`, `"type":null,`, `"type":"start",`, `"type":"end",`} {
 		w := request(a, "POST", "/api/webhook", strings.Replace(valid, `"type":"location",`, replacement, 1), nil, token)
 		expect(t, w, 400)
 		var result map[string]string
@@ -283,7 +286,7 @@ func TestWebhookValidationAndPersistence(t *testing.T) {
 		t.Fatal("not deduplicated", count)
 	}
 	if _, err := a.db.Exec("INSERT INTO points(reporting_id,device_hash,timestamp_ms,latitude,longitude) VALUES('missing','1234567890abcdef',1,0,0)"); err == nil {
-		t.Fatal("database supplied an implicit packet type")
+		t.Fatal("database accepted a missing session ID")
 	}
 	var file string
 	_ = a.db.QueryRow("SELECT file FROM pragma_database_list WHERE name='main'").Scan(&file)
@@ -299,15 +302,21 @@ func TestWebhookValidationAndPersistence(t *testing.T) {
 	}
 }
 func pointAt(id, device string, ms int64, lat, lon float64) point {
-	return point{Type: "location", ID: id, Device: device, Time: ms, Lat: &lat, Lon: &lon}
+	return point{Type: "location", ID: id, Device: device, Session: testSession, Time: ms, Lat: &lat, Lon: &lon}
 }
-func TestTrackBoundariesAndDistance(t *testing.T) {
-	points := []point{pointAt("a", "d", 1, 0, 0), pointAt("a", "d", 1800001, 0, 1), pointAt("a", "d", 3600002, 0, 2), pointAt("a", "e", 1, 0, 0), pointAt("b", "d", 1, 0, 0)}
+func TestTrackSessionsAndDistance(t *testing.T) {
+	points := []point{pointAt("a", "d", 1, 0, 0), pointAt("a", "d", 7200001, 0, 1), pointAt("a", "d", 7200001, 0, 2), pointAt("a", "e", 1, 0, 0), pointAt("b", "d", 1, 0, 0)}
+	points[2].Session = otherSession
 	tracks, total := groupTracks(points)
-	if len(tracks) != 4 || total.Points != 5 || total.Duration != 1800000 || math.Abs(total.Distance-111195.0802) > 0.1 {
+	if len(tracks) != 4 || total.Points != 5 || total.Duration != 7200000 || math.Abs(total.Distance-111195.0802) > 0.1 {
 		t.Fatalf("bad summary %+v", total)
 	}
+	keys := map[string]bool{}
 	for _, track := range tracks {
+		if keys[track.Key] {
+			t.Fatal("sessions share a key")
+		}
+		keys[track.Key] = true
 		if track.Count == 1 && (track.Distance != 0 || track.Duration != 0) {
 			t.Fatal("single point has movement")
 		}
@@ -317,45 +326,12 @@ func TestTrackBoundariesAndDistance(t *testing.T) {
 	}
 }
 
-func TestRecordingMarkerBoundaries(t *testing.T) {
-	marked := func(ms int64, kind string) point {
-		p := pointAt("a", "d", ms, 0, float64(ms)/3600000)
-		p.Type = kind
-		return p
-	}
-	for _, tc := range []struct {
-		name   string
-		points []point
-		counts []int
-	}{
-		{"explicit long gap", []point{marked(1, "start"), marked(3600001, "location"), marked(7200001, "end")}, []int{3}},
-		{"end closes immediately", []point{marked(1, "start"), marked(2, "end"), marked(3, "location")}, []int{1, 2}},
-		{"new start closes missing end", []point{marked(1, "start"), marked(2, "start"), marked(3, "end")}, []int{2, 1}},
-		{"orphan end", []point{marked(1, "location"), marked(2, "end"), marked(3, "end")}, []int{1, 2}},
-		{"same timestamp single point record", []point{marked(1, "start"), marked(1, "end")}, []int{2}},
-		{"unmarked fallback", []point{marked(1, "location"), marked(1800001, "location"), marked(3600002, "location")}, []int{1, 2}},
-		{"devices stay separate", []point{marked(1, "start"), pointAt("a", "e", 1, 0, 0), pointAt("a", "e", 3600001, 0, 1)}, []int{1, 1, 1}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			tracks, total := groupTracks(tc.points)
-			if len(tracks) != len(tc.counts) || total.Points != len(tc.points) {
-				t.Fatalf("tracks=%+v total=%+v", tracks, total)
-			}
-			for i, count := range tc.counts {
-				if tracks[i].Count != count {
-					t.Fatalf("track %d has %d points, want %d", i, tracks[i].Count, count)
-				}
-			}
-		})
-	}
-}
-
 func TestWebhookPacketTypes(t *testing.T) {
 	a := testApp(t)
 	cookie := registerTestUser(t, a)
 	token := strings.Repeat("e", 64)
 	key := addTestToken(t, a, cookie, token)
-	body := `{"type":"test"}`
+	body := `{"type":"test","session_id":"e0629f7c-57a5-4d47-9afc-00c3c6d4d3f9"}`
 	expect(t, request(a, "POST", "/api/webhook", body, nil, ""), 401)
 	expect(t, request(a, "POST", "/api/webhook", body, nil, strings.Repeat("f", 64)), 401)
 	w := request(a, "POST", "/api/webhook", body, nil, token)
@@ -378,51 +354,30 @@ func TestWebhookPacketTypes(t *testing.T) {
 	for _, body := range []string{`{}`, `{"type":""}`, `{"type":null}`, `{"type":"unknown"}`, `{"type":1}`, `{"type":"start"}`, `{"type":"end"}`} {
 		expect(t, request(a, "POST", "/api/webhook", body, nil, token), 400)
 	}
-	base, _ := time.ParseInLocation("2006-01-02 15:04", "2026-01-01 23:55", a.location)
-	// Deliver the end first, then the start and intermediate point; resend each packet.
-	for _, item := range []struct {
-		kind    string
-		minutes int
-	}{{"end", 130}, {"start", 0}, {"location", 65}} {
-		p := pointAt("record", "1234567890abcdef", base.Add(time.Duration(item.minutes)*time.Minute).UnixMilli(), 0, float64(item.minutes)/65)
-		p.Type = item.kind
-		b, _ := json.Marshal(p)
-		for range 2 {
-			expect(t, request(a, "POST", "/api/webhook", string(b), nil, token), 200)
+	for _, kind := range []string{"test", "location"} {
+		valid := pointAt("record", "1234567890abcdef", 100000, 0, 0)
+		valid.Type = kind
+		encoded, _ := json.Marshal(valid)
+		for _, value := range []string{"", " ", strings.ToUpper(testSession), "e0629f7c57a54d479afc00c3c6d4d3f9", "e0629f7c-57a5-1d47-9afc-00c3c6d4d3f9", "e0629f7c-57a5-4d47-7afc-00c3c6d4d3f9", testSession + "\n", strings.Repeat("a", 1000)} {
+			// JSON-encode the field so whitespace and control characters reach validation.
+			field, _ := json.Marshal(value)
+			invalid := strings.Replace(string(encoded), fmt.Sprintf("%q", testSession), string(field), 1)
+			w := request(a, "POST", "/api/webhook", invalid, nil, token)
+			expect(t, w, 400)
+			var result map[string]string
+			if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil || result["code"] != "error.sessionID" {
+				t.Fatal("session validation", err, result)
+			}
 		}
+		for _, replacement := range []string{"", `"session_id":null,`, `"session_id":123,`} {
+			invalid := strings.Replace(string(encoded), fmt.Sprintf(`"session_id":%q,`, testSession), replacement, 1)
+			expect(t, request(a, "POST", "/api/webhook", invalid, nil, token), 400)
+		}
+		expect(t, request(a, "POST", "/api/webhook", string(encoded), nil, token), 200)
 	}
-	query := "?from=2026-01-02&to=2026-01-02&id=record&device=1234567890abcdef"
-	w = request(a, "GET", "/api/tracks"+query, "", cookie, "")
-	expect(t, w, 200)
-	var result struct {
-		Tracks  []track `json:"tracks"`
-		Summary summary `json:"summary"`
+	if err := a.db.QueryRow("SELECT count(*) FROM points").Scan(&count); err != nil || count != 1 {
+		t.Fatal("invalid requests persisted", err, count)
 	}
-	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
-		t.Fatal(err)
-	}
-	if result.Summary.Points != 2 || result.Summary.Tracks != 1 || result.Summary.Duration != 65*60000 || math.Abs(result.Summary.Distance-111195.0802) > 0.1 {
-		t.Fatalf("clipped marked record: %+v", result)
-	}
-	w = request(a, "GET", "/api/tracks/"+result.Tracks[0].Key+query, "", cookie, "")
-	expect(t, w, 200)
-	var detail track
-	if err := json.Unmarshal(w.Body.Bytes(), &detail); err != nil {
-		t.Fatal(err)
-	}
-	if len(detail.Points) != 2 || detail.Points[1].Type != "end" || detail.Distance != result.Summary.Distance {
-		t.Fatalf("detail: %+v", detail)
-	}
-	for _, kind := range []string{"start", "end", "start", "end"} {
-		p := pointAt("single", "1234567890abcdef", base.UnixMilli(), 0, 0)
-		p.Type = kind
-		b, _ := json.Marshal(p)
-		expect(t, request(a, "POST", "/api/webhook", string(b), nil, token), 200)
-	}
-	if err := a.db.QueryRow("SELECT count(*) FROM points").Scan(&count); err != nil || count != 5 {
-		t.Fatal("packet deduplication", err, count)
-	}
-	expect(t, request(a, "POST", "/api/webhook", `{"type":"test"}`, nil, token), 200)
 	var after *int64
 	_ = a.db.QueryRow("SELECT last_upload_ms FROM tokens WHERE key=?", key).Scan(&after)
 	if after == nil {
@@ -437,13 +392,84 @@ func TestWebhookPacketTypes(t *testing.T) {
 	expect(t, request(a, "POST", "/api/webhook", body, nil, token), 401)
 }
 
+func TestWebhookSessions(t *testing.T) {
+	a := testApp(t)
+	cookie := registerTestUser(t, a)
+	token := strings.Repeat("b", 64)
+	addTestToken(t, a, cookie, token)
+	base, _ := time.ParseInLocation("2006-01-02 15:04", "2026-01-01 23:55", a.location)
+	// Interleaved sessions arrive out of order, including equal timestamps and retries.
+	for _, item := range []struct {
+		session string
+		minutes int
+	}{{testSession, 130}, {otherSession, 65}, {testSession, 0}, {testSession, 65}, {otherSession, 130}} {
+		p := pointAt("record", "1234567890abcdef", base.Add(time.Duration(item.minutes)*time.Minute).UnixMilli(), 0, float64(item.minutes)/65)
+		p.Session = item.session
+		body, _ := json.Marshal(p)
+		for range 2 {
+			expect(t, request(a, "POST", "/api/webhook", string(body), nil, token), 200)
+		}
+	}
+	var count int
+	if err := a.db.QueryRow("SELECT count(*) FROM points").Scan(&count); err != nil || count != 5 {
+		t.Fatal("session deduplication", err, count)
+	}
+	query := "?from=2026-01-02&to=2026-01-02&id=record&device=1234567890abcdef"
+	var result struct {
+		Tracks  []track `json:"tracks"`
+		Summary summary `json:"summary"`
+	}
+	w := request(a, "GET", "/api/tracks"+query, "", cookie, "")
+	expect(t, w, 200)
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Summary.Points != 4 || result.Summary.Tracks != 2 || result.Summary.Duration != 130*60000 || math.Abs(result.Summary.Distance-2*111195.0802) > 0.1 {
+		t.Fatalf("clipped sessions: %+v", result)
+	}
+	keys := map[string]string{}
+	for _, tr := range result.Tracks {
+		keys[tr.Session] = tr.Key
+		w := request(a, "GET", "/api/tracks/"+tr.Key+query, "", cookie, "")
+		expect(t, w, 200)
+		var detail track
+		if err := json.Unmarshal(w.Body.Bytes(), &detail); err != nil {
+			t.Fatal(err)
+		}
+		if detail.Session != tr.Session || detail.Count != 2 || len(detail.Points) != 2 || detail.Distance != tr.Distance || detail.Duration != tr.Duration {
+			t.Fatalf("detail: %+v", detail)
+		}
+		for _, p := range detail.Points {
+			if p.Type != "location" || p.Session != tr.Session {
+				t.Fatal("mixed sessions", p)
+			}
+		}
+	}
+	if keys[testSession] == keys[otherSession] {
+		t.Fatal("equal-timestamp sessions share a key")
+	}
+	w = request(a, "GET", "/api/tracks?from=2026-01-01&to=2026-01-02&id=record", "", cookie, "")
+	expect(t, w, 200)
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Summary.Points != 5 || result.Summary.Tracks != 2 || result.Summary.Duration != 195*60000 {
+		t.Fatal("cross-date session", result.Summary)
+	}
+	for _, tr := range result.Tracks {
+		if keys[tr.Session] != tr.Key {
+			t.Fatal("date clipping changed session key")
+		}
+	}
+}
+
 func TestDateFilteringPaginationAndDetail(t *testing.T) {
 	a := testApp(t)
 	cookie := registerTestUser(t, a)
 	base, _ := time.ParseInLocation("2006-01-02 15:04", "2026-01-01 23:55", a.location)
 	for i := 0; i < 4; i++ {
 		p := pointAt("daily", "1234567890abcdef", base.Add(time.Duration(i)*5*time.Minute).UnixMilli(), 0, float64(i))
-		_, err := a.db.Exec("INSERT INTO points(reporting_id,device_hash,timestamp_ms,latitude,longitude,type) VALUES(?,?,?,?,?,'location')", p.ID, p.Device, p.Time, p.Lat, p.Lon)
+		_, err := a.db.Exec("INSERT INTO points(reporting_id,device_hash,session_id,timestamp_ms,latitude,longitude) VALUES(?,?,?,?,?,?)", p.ID, p.Device, p.Session, p.Time, p.Lat, p.Lon)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -472,7 +498,7 @@ func TestDateFilteringPaginationAndDetail(t *testing.T) {
 		expect(t, request(a, "GET", "/api/tracks"+q, "", cookie, ""), 400)
 	}
 	for i := 0; i < 55; i++ {
-		_, err := a.db.Exec("INSERT INTO points(reporting_id,device_hash,timestamp_ms,latitude,longitude,type) VALUES('many','1234567890abcdef',?,0,0,'location')", base.Add(time.Duration(i)*31*time.Minute).UnixMilli())
+		_, err := a.db.Exec("INSERT INTO points(reporting_id,device_hash,session_id,timestamp_ms,latitude,longitude) VALUES('many','1234567890abcdef',?,?,0,0)", fmt.Sprintf("%08x-0000-4000-8000-000000000000", i), base.Add(time.Duration(i)*time.Minute).UnixMilli())
 		if err != nil {
 			t.Fatal(err)
 		}

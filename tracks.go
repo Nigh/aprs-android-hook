@@ -15,6 +15,7 @@ type point struct {
 	Type     string   `json:"type"`
 	ID       string   `json:"id"`
 	Device   string   `json:"device_hash"`
+	Session  string   `json:"session_id"`
 	Time     int64    `json:"timestamp_ms"`
 	Lat      *float64 `json:"latitude"`
 	Lon      *float64 `json:"longitude"`
@@ -27,6 +28,7 @@ type track struct {
 	Key      string  `json:"key"`
 	ID       string  `json:"id"`
 	Device   string  `json:"device_hash"`
+	Session  string  `json:"session_id"`
 	Start    int64   `json:"start_ms"`
 	End      int64   `json:"end_ms"`
 	Count    int     `json:"point_count"`
@@ -49,36 +51,15 @@ func distance(a, b point) float64 {
 }
 
 func groupTracks(points []point) ([]track, summary) {
-	return groupTracksFrom(points, 0)
-}
-
-func groupTracksFrom(points []point, from int64) ([]track, summary) {
 	tracks := []track{}
-	var previous point
-	open := false
 	for _, p := range points {
-		newStream := previous.ID != p.ID || previous.Device != p.Device
-		if newStream {
-			open = false
-		}
-		boundary := newStream || p.Type == "start" || previous.Type == "end" || (!open && p.Time-previous.Time > 30*60*1000)
-		if p.Type == "start" {
-			open = true
-		} else if p.Type == "end" {
-			open = false
-		}
-		previous = p
-		// A preceding marker establishes state but never contributes to range statistics.
-		if p.Time < from {
-			continue
-		}
 		var current *track
 		if len(tracks) > 0 {
 			current = &tracks[len(tracks)-1]
 		}
-		if current == nil || current.ID != p.ID || current.Device != p.Device || boundary {
-			keyData, _ := json.Marshal([]any{p.ID, p.Device, p.Time})
-			tracks = append(tracks, track{Key: base64.RawURLEncoding.EncodeToString(keyData), ID: p.ID, Device: p.Device, Start: p.Time, End: p.Time})
+		if current == nil || current.ID != p.ID || current.Device != p.Device || current.Session != p.Session {
+			keyData, _ := json.Marshal([]string{p.ID, p.Device, p.Session})
+			tracks = append(tracks, track{Key: base64.RawURLEncoding.EncodeToString(keyData), ID: p.ID, Device: p.Device, Session: p.Session, Start: p.Time, End: p.Time})
 			current = &tracks[len(tracks)-1]
 		}
 		if current.Count > 0 {
@@ -123,17 +104,9 @@ func (a *app) queryTracks(r *http.Request) ([]track, summary, error) {
 	if err != nil || end.Before(start) {
 		return nil, summary{}, fmt.Errorf("结束日期不能早于开始日期")
 	}
-	rows, err := a.db.QueryContext(r.Context(), `WITH preceding AS (
-SELECT reporting_id,device_hash,max(timestamp_ms) AS timestamp_ms FROM points
-WHERE type IN ('start','end') AND timestamp_ms<?1 AND (?3='' OR reporting_id=?3) AND (?4='' OR device_hash=?4)
-GROUP BY reporting_id,device_hash
-), selected AS (
-SELECT p.* FROM points p WHERE timestamp_ms>=?1 AND timestamp_ms<?2 AND (?3='' OR reporting_id=?3) AND (?4='' OR device_hash=?4)
-UNION ALL
-SELECT p.* FROM points p JOIN preceding m USING(reporting_id,device_hash,timestamp_ms) WHERE p.type IN ('start','end')
-)
-SELECT reporting_id,device_hash,timestamp_ms,latitude,longitude,accuracy_m,speed_mps,bearing_deg,altitude_m,type FROM selected
-ORDER BY reporting_id,device_hash,timestamp_ms,CASE type WHEN 'start' THEN 0 WHEN 'end' THEN 2 ELSE 1 END`, start.UnixMilli(), end.AddDate(0, 0, 1).UnixMilli(), q.Get("id"), q.Get("device"))
+	rows, err := a.db.QueryContext(r.Context(), `SELECT reporting_id,device_hash,session_id,timestamp_ms,latitude,longitude,accuracy_m,speed_mps,bearing_deg,altitude_m FROM points
+WHERE timestamp_ms>=?1 AND timestamp_ms<?2 AND (?3='' OR reporting_id=?3) AND (?4='' OR device_hash=?4)
+ORDER BY reporting_id,device_hash,session_id,timestamp_ms`, start.UnixMilli(), end.AddDate(0, 0, 1).UnixMilli(), q.Get("id"), q.Get("device"))
 	if err != nil {
 		return nil, summary{}, err
 	}
@@ -141,8 +114,8 @@ ORDER BY reporting_id,device_hash,timestamp_ms,CASE type WHEN 'start' THEN 0 WHE
 	// shortcut: materialize points in the selected range; use streaming aggregation if very large histories make queries slow.
 	points := []point{}
 	for rows.Next() {
-		var p point
-		if err := rows.Scan(&p.ID, &p.Device, &p.Time, &p.Lat, &p.Lon, &p.Accuracy, &p.Speed, &p.Bearing, &p.Altitude, &p.Type); err != nil {
+		p := point{Type: "location"}
+		if err := rows.Scan(&p.ID, &p.Device, &p.Session, &p.Time, &p.Lat, &p.Lon, &p.Accuracy, &p.Speed, &p.Bearing, &p.Altitude); err != nil {
 			return nil, summary{}, err
 		}
 		points = append(points, p)
@@ -150,7 +123,7 @@ ORDER BY reporting_id,device_hash,timestamp_ms,CASE type WHEN 'start' THEN 0 WHE
 	if err := rows.Err(); err != nil {
 		return nil, summary{}, err
 	}
-	tracks, total := groupTracksFrom(points, start.UnixMilli())
+	tracks, total := groupTracks(points)
 	return tracks, total, nil
 }
 

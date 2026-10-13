@@ -117,44 +117,52 @@ Replace `TOKEN` with the phone token you have registered. Do not commit real tok
 
 ```sh
 TOKEN='replace-with-your-64-character-phone-token'
+SESSION_ID=$(python3 -c 'import uuid; print(uuid.uuid4())')
 curl --fail-with-body https://tracks.example.com/api/webhook \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  --data '{"type":"test"}'
+  --data "{\"type\":\"test\",\"session_id\":\"$SESSION_ID\"}"
 ```
 
-A successful test returns HTTP 200 and `{"ok":true,"type":"test"}`. Check both the status and JSON response. This verifies connectivity and token authentication without adding a location or changing the token's last upload time. A real location upload is still needed to verify location storage. Coordinates `(0,0)` are valid locations, not test signals.
+A successful test returns HTTP 200 and `{"ok":true,"type":"test"}`. Check both the status and JSON response. This verifies connectivity, token authentication, and the generated session ID's format without adding a location or changing the token's last upload time. The server validates UUID format, not the quality of the client's randomness. A real location upload is still needed to verify location storage. Coordinates `(0,0)` are valid locations, not test signals.
 
-### Recording packet types
+### Packet types and recording sessions
 
-`POST /api/webhook` requires one of these `type` values:
+`POST /api/webhook` requires an explicit `type` and a valid `session_id` on **every request**, including tests:
 
 | `type` | Behavior |
 | --- | --- |
-| `"location"` | Ordinary location update. |
-| `"test"` | Authenticate the Bearer token and return a test response; no location fields are required or stored. |
-| `"start"` | Store a location as the first point of a new recording. |
-| `"end"` | Store a location as the last point of the current recording. |
+| `"location"` | Store a location in the supplied recording session. |
+| `"test"` | Validate the session ID and authenticate the Bearer token, then return a test response; no location fields are required or stored. |
 
-Missing, empty, null, or unknown types return HTTP 400. `start` and `end` require the **same fields and validation as ordinary locations**: `id`, `device_hash`, `timestamp_ms`, `latitude`, `longitude`, plus optional nullable `accuracy_m`, `speed_mps`, `bearing_deg`, and `altitude_m`. Each marker carries its own measured position and timestamp; start and end coordinates do not have to match. For example:
+Missing, empty, null, or unknown types return HTTP 400. `start` and `end` are not supported. A location requires `id`, `device_hash`, `session_id`, `timestamp_ms`, `latitude`, and `longitude`. Optional nullable measurements are `accuracy_m`, `speed_mps`, `bearing_deg`, and `altitude_m`. For example:
 
 ```json
-{"type":"start","id":"my-phone","device_hash":"0123456789abcdef","timestamp_ms":1767225600000,"latitude":31.2304,"longitude":121.4737,"accuracy_m":5,"speed_mps":null,"bearing_deg":null,"altitude_m":null}
+{"type":"location","id":"my-phone","device_hash":"0123456789abcdef","session_id":"e0629f7c-57a5-4d47-9afc-00c3c6d4d3f9","timestamp_ms":1767225600000,"latitude":31.2304,"longitude":121.4737,"accuracy_m":5,"speed_mps":null,"bearing_deg":null,"altitude_m":null}
 ```
 
-Location and marker uploads return `{"ok":true}`. The server deduplicates by reporting ID, device, timestamp **and type**; retry an identical packet without changing its type. Distinct start/end packets can share a timestamp for a single-position recording. At equal timestamps, the order is start, ordinary location, then end.
+`session_id` must be a **canonical lowercase UUID v4**: exactly 36 ASCII characters, including hyphens, with version `4` and variant `8`, `9`, `a`, or `b`. The accepted pattern is:
 
-Android must send an explicit `type` on every upload and send start/end markers to use recording boundaries. Updating this server does not add a test button or marker generation to the Android app.
+```text
+^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$
+```
+
+Missing, null, uppercase, padded, or malformed IDs return HTTP 400 with `error.sessionID`. Other JSON types (numbers, booleans, arrays, or objects) return HTTP 400 with `error.json`. IDs are not trimmed or normalized.
+
+Android should generate one ID with `java.util.UUID.randomUUID().toString()` when a recording begins, **before acquiring GPS or attempting an upload**. Reuse that ID for every point and retry in the same session, including after network/GPS failures or channel toggles. Generate a new ID for each new recording; never recycle a previous ID. If a recording is resumed after a process restart, persist and restore its ID; if a new recording is started, generate a new one. A standalone manual report gets a new ID; a manual report belonging to an active recording reuses that recording's ID. Generate a fresh random ID for each `test` request using the same generator, without replacing the active recording ID. The example UUID above is illustrative; do not hardcode it in Android.
+
+Location uploads return `{"ok":true}`. Deduplication uses `(id, device_hash, session_id, timestamp_ms)`; retries must preserve these fields. Points from different sessions can share a timestamp. Session IDs identify recordings, not authorization: a registered Bearer token is still required, and changing the token does not create a new session.
+
+Android must implement this protocol to upload successfully. Updating the server alone does not generate session IDs on the phone. This server targets a fresh database; no earlier payload or database schema is supported.
 
 ## Tracks and statistics
 
-- Points are sorted by time within each reporting ID and device. `start` begins a new segment; `end` belongs to that segment and closes it. A new `start` also closes an earlier recording that never received its end marker. A point after `end` starts a separate segment even if it arrives less than 30 minutes later.
-- An explicitly started recording stays together until `end` or another `start`, including gaps longer than 30 minutes. For unmarked points, a gap **over 30 minutes** remains a fallback; exactly 30 minutes stays together. An orphan `end` closes the fallback segment containing it. A missing end cannot be distinguished from a long pause, so a started recording remains open until the next marker.
-- Distance is the sum of spherical distances between consecutive points in each segment, not a road-navigation distance. GPS drift can increase the result; this version does not automatically filter it.
-- Recorded duration is the sum of each segment's last timestamp minus its first timestamp. It includes stops and gaps within an explicitly marked recording, and excludes intervals between segments. It is not actual movement time.
-- A single-point track has zero distance and duration. Different reporting IDs or devices are never connected; changing a token alone does not split a track.
-- Date ranges include the entire end date in the displayed deployment timezone. Statistics and maps use only points inside the selected range; tracks crossing the boundary are clipped.
-- Lists contain 50 tracks per page; totals cover the entire filter result. Out-of-order uploads are included the next time you query, so segment boundaries can change.
+- A track consists of all received points with the same `(id, device_hash, session_id)`, sorted by measured timestamp. Different sessions remain separate even with overlapping or identical timestamps. The same session stays together across gaps of any length; there is no 30-minute fallback or start/end state.
+- Distance is the sum of spherical distances between consecutive points in each session, not a road-navigation distance. GPS drift can increase the result; this version does not automatically filter it. Missing points cannot be recovered, and a straight connection across a gap may differ from the actual route.
+- Recorded duration is the sum of each session's last received timestamp minus its first received timestamp. It includes stops and gaps within a session, excludes intervals between sessions, and is not actual movement time or the exact duration between the user's start/stop actions.
+- A single-point track has zero distance and duration. Different reporting IDs or devices are never connected, even if they reuse a session ID. Reusing an ID for separate recordings on the same reporting ID/device merges them.
+- Date ranges include the entire end date in the displayed deployment timezone. Statistics and maps use only points inside the selected range; sessions crossing the boundary are clipped.
+- Lists contain 50 tracks per page; totals cover the entire filter result. Track summaries and details expose `session_id`. Track keys identify the reporting ID/device/session and stay stable across date clipping and late uploads, although points and statistics can change.
 
 Maps are provided by [OpenFreeMap](https://openfreemap.org/) using OpenStreetMap data. Your browser needs network access to the map service and WebGL support. Map failures do not prevent browsing the list and statistics. The PWA caches only the static app shell; private tracks cannot be queried offline. The installed PWA name and description use English; its interface follows your saved language choice.
 
@@ -197,7 +205,7 @@ There is no password recovery feature in this version. Keep your password and da
 | Symptom | Check |
 | --- | --- |
 | Phone HTTP 401 | Was the complete token registered? Has the phone refreshed it? |
-| Phone HTTP 400 | Are location fields and timestamps valid? Is the test JSON complete? |
+| Phone HTTP 400 | Are location fields, timestamps, and the session ID valid? Is the test JSON complete? |
 | Web HTTP 403 | Does `PUBLIC_URL` match the browser origin, including scheme and port? |
 | Signing in returns to the login page | Use Caddy's HTTPS URL when the service is configured for HTTPS. |
 | No tracks | Check dates, deployment timezone, ID/device filters, and the phone's HTTP 200 log. |

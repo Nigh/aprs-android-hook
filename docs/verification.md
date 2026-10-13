@@ -35,3 +35,14 @@
 - All webhook packets now require `type`: `location`, `test`, `start`, or `end`. Missing, empty, null, and unknown values return HTTP 400 with `error.uploadType`, tested using otherwise valid location payloads.
 - Stored fixes require an explicit `location`, `start`, or `end` type, without a database default. Marker context queries use only start/end types. The 30-minute fallback is retained for locations outside explicitly started recordings.
 - Existing persistence/restart, marker, HTTPS, authentication, and filtering checks remain; English and Chinese README describe the strict protocol.
+
+## 2026-10-13 · Session IDs replace recording markers
+
+This protocol supersedes the marker and 30-minute behavior described in the earlier verification entries.
+
+- Only `location` and `test` types are accepted. Both require a canonical lowercase UUID v4 `session_id`; missing, null, non-string, uppercase, malformed version/variant, and whitespace IDs are rejected. Authenticated tests validate the ID without persisting points or modifying token upload times.
+- Fresh SQLite schema stores session IDs and deduplicates by reporting ID/device/session/timestamp. No legacy compatibility or database migrations; the stored packet type and marker index are removed.
+- Tracks group by reporting ID/device/session, including long gaps. Tests cover interleaved out-of-order sessions, retries, identical timestamps in different sessions, stream isolation, distance and duration, cross-date clipping, stable session keys, pagination, persistence, and HTTPS.
+- English/Chinese README document UUID constraints, Android UUID generation and session lifecycle, independent random test IDs, curl testing, and statistics. UI copy and validation error translations match the new protocol.
+- Android generation and real-phone/public-domain pairing are outside this server change and have not been tested.
+- Validation passed: `go test -race .`, `go vet .`, and frontend `yarn check`, `yarn lint`, `yarn test`, `yarn build`. No dependencies added.
