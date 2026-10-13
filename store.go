@@ -46,9 +46,29 @@ CREATE TABLE IF NOT EXISTS users (singleton INTEGER PRIMARY KEY CHECK(singleton=
 CREATE TABLE IF NOT EXISTS sessions (hash TEXT PRIMARY KEY, expires_ms INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS tokens (key TEXT PRIMARY KEY, hash TEXT NOT NULL UNIQUE, mask TEXT NOT NULL, note TEXT NOT NULL, created_ms INTEGER NOT NULL, last_upload_ms INTEGER);
 CREATE TRIGGER IF NOT EXISTS token_limit BEFORE INSERT ON tokens WHEN (SELECT count(*) FROM tokens)>=16 BEGIN SELECT RAISE(ABORT,'token limit'); END;
-CREATE TABLE IF NOT EXISTS points (reporting_id TEXT NOT NULL, device_hash TEXT NOT NULL, timestamp_ms INTEGER NOT NULL, latitude REAL NOT NULL, longitude REAL NOT NULL, accuracy_m REAL, speed_mps REAL, bearing_deg REAL, altitude_m REAL, UNIQUE(reporting_id,device_hash,timestamp_ms));
+CREATE TABLE IF NOT EXISTS points (reporting_id TEXT NOT NULL, device_hash TEXT NOT NULL, timestamp_ms INTEGER NOT NULL, latitude REAL NOT NULL, longitude REAL NOT NULL, accuracy_m REAL, speed_mps REAL, bearing_deg REAL, altitude_m REAL, type TEXT NOT NULL DEFAULT '' CHECK(type IN ('','start','end')), UNIQUE(reporting_id,device_hash,timestamp_ms,type));
 CREATE INDEX IF NOT EXISTS points_time ON points(timestamp_ms);
 CREATE INDEX IF NOT EXISTS points_stream_time ON points(reporting_id,device_hash,timestamp_ms);`)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	// Migrate existing histories atomically; distinct marker packets may share a timestamp.
+	var hasType int
+	err = db.QueryRow(`SELECT count(*) FROM pragma_table_info('points') WHERE name='type'`).Scan(&hasType)
+	if err == nil && hasType == 0 {
+		_, err = db.Exec(`BEGIN;
+ALTER TABLE points RENAME TO points_legacy;
+CREATE TABLE points (reporting_id TEXT NOT NULL, device_hash TEXT NOT NULL, timestamp_ms INTEGER NOT NULL, latitude REAL NOT NULL, longitude REAL NOT NULL, accuracy_m REAL, speed_mps REAL, bearing_deg REAL, altitude_m REAL, type TEXT NOT NULL DEFAULT '' CHECK(type IN ('','start','end')), UNIQUE(reporting_id,device_hash,timestamp_ms,type));
+INSERT INTO points SELECT *, '' FROM points_legacy;
+DROP TABLE points_legacy;
+CREATE INDEX points_time ON points(timestamp_ms);
+CREATE INDEX points_stream_time ON points(reporting_id,device_hash,timestamp_ms);
+COMMIT;`)
+	}
+	if err == nil {
+		_, err = db.Exec(`CREATE INDEX IF NOT EXISTS points_markers ON points(reporting_id,device_hash,timestamp_ms) WHERE type!=''`)
+	}
 	if err != nil {
 		db.Close()
 		return nil, err

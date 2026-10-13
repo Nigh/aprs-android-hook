@@ -2,6 +2,7 @@ package main
 
 // Keep the legacy error message while giving clients stable translation keys.
 var errorCodes = map[string]string{
+	"上传类型无效":                 "error.uploadType",
 	"请使用 application/json":   "error.contentType",
 	"JSON 格式无效或请求过大":         "error.json",
 	"请求只能包含一个 JSON 对象":       "error.singleJSON",

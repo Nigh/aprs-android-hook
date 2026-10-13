@@ -20,3 +20,12 @@
 - English/Chinese desktop and mobile layouts checked with synthetic track data. No horizontal overflow in the mobile layouts.
 - Tests cover catalog key/placeholder parity, English fallback, registering additional languages, native plural rules, locale-aware time formatting at midnight, and stable API error codes preserving the legacy message field.
 - Go tests/race and frontend check/lint/test/build pass. No dependencies or database migrations added.
+
+## 2026-10-13 · Webhook recording markers
+
+- `test` authenticates the upload token without saving a point or changing last upload time; TLS tests check its HTTP status and response JSON. Missing, unknown, and revoked tokens are rejected.
+- `start` and `end` carry ordinary location fields. Sorted markers define boundaries even with out-of-order delivery; duplicates are idempotent by stream, timestamp, and type. Equal-timestamp start/end packets are retained.
+- Tests cover explicitly started records with gaps over 30 minutes, new starts without prior ends, orphan ends, points after an end, old-client fallback and its exact 30-minute boundary, separate devices, and single-position records.
+- Date-range tests retain preceding marker context while excluding its coordinates/time from clipped statistics, and verify list/detail/summary agreement.
+- Legacy SQLite migration preserves old fixes and supports repeated restarts. Back up before upgrading; older versions require restoring the old backup to downgrade.
+- Go tests/race/vet and frontend check/lint/test/build pass. No dependencies added. Real Android marker generation and public-domain HTTPS pairing are not tested; this change extends the server only.
