@@ -25,7 +25,13 @@
 
 - `test` authenticates the upload token without saving a point or changing last upload time; TLS tests check its HTTP status and response JSON. Missing, unknown, and revoked tokens are rejected.
 - `start` and `end` carry ordinary location fields. Sorted markers define boundaries even with out-of-order delivery; duplicates are idempotent by stream, timestamp, and type. Equal-timestamp start/end packets are retained.
-- Tests cover explicitly started records with gaps over 30 minutes, new starts without prior ends, orphan ends, points after an end, old-client fallback and its exact 30-minute boundary, separate devices, and single-position records.
+- Tests cover explicitly started records with gaps over 30 minutes, new starts without prior ends, orphan ends, points after an end, fallback and its exact 30-minute boundary, separate devices, and single-position records.
 - Date-range tests retain preceding marker context while excluding its coordinates/time from clipped statistics, and verify list/detail/summary agreement.
-- Legacy SQLite migration preserves old fixes and supports repeated restarts. Back up before upgrading; older versions require restoring the old backup to downgrade.
 - Go tests/race/vet and frontend check/lint/test/build pass. No dependencies added. Real Android marker generation and public-domain HTTPS pairing are not tested; this change extends the server only.
+
+## 2026-10-13 · Remove unused legacy compatibility
+
+- No deployed database exists: removed the old-schema migration and migration-specific test.
+- All webhook packets now require `type`: `location`, `test`, `start`, or `end`. Missing, empty, null, and unknown values return HTTP 400 with `error.uploadType`, tested using otherwise valid location payloads.
+- Stored fixes require an explicit `location`, `start`, or `end` type, without a database default. Marker context queries use only start/end types. The 30-minute fallback is retained for locations outside explicitly started recordings.
+- Existing persistence/restart, marker, HTTPS, authentication, and filtering checks remain; English and Chinese README describe the strict protocol.

@@ -174,7 +174,7 @@ func TestTokenLimitAndRevocation(t *testing.T) {
 	}
 	expect(t, request(a, "POST", "/api/tokens", fmt.Sprintf(`{"token":%q}`, strings.Repeat("b", 64)), cookie, ""), 409)
 	expect(t, request(a, "PATCH", "/api/tokens/"+key, `{"note":"日常手机"}`, cookie, ""), 200)
-	body := `{"id":"设备1","device_hash":"1234567890abcdef","timestamp_ms":100000,"latitude":0,"longitude":0,"accuracy_m":null,"speed_mps":0,"bearing_deg":0,"altitude_m":-12.5}`
+	body := `{"type":"location","id":"设备1","device_hash":"1234567890abcdef","timestamp_ms":100000,"latitude":0,"longitude":0,"accuracy_m":null,"speed_mps":0,"bearing_deg":0,"altitude_m":-12.5}`
 	expect(t, request(a, "POST", "/api/webhook", body, nil, token), 200)
 	expect(t, request(a, "DELETE", "/api/tokens/"+key, "", cookie, ""), 200)
 	expect(t, request(a, "POST", "/api/webhook", body, nil, token), 401)
@@ -222,7 +222,7 @@ func TestHTTPSUpload(t *testing.T) {
 	addTestToken(t, a, cookie, token)
 	server := httptest.NewTLSServer(a.handler())
 	defer server.Close()
-	body := `{"id":"connection-test","device_hash":"0123456789abcdef","timestamp_ms":1767225600000,"latitude":31.2304,"longitude":121.4737,"accuracy_m":5,"speed_mps":null,"bearing_deg":null,"altitude_m":null}`
+	body := `{"type":"location","id":"connection-test","device_hash":"0123456789abcdef","timestamp_ms":1767225600000,"latitude":31.2304,"longitude":121.4737,"accuracy_m":5,"speed_mps":null,"bearing_deg":null,"altitude_m":null}`
 	r, err := http.NewRequest("POST", server.URL+"/api/webhook", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
@@ -258,7 +258,15 @@ func TestWebhookValidationAndPersistence(t *testing.T) {
 	cookie := registerTestUser(t, a)
 	token := strings.Repeat("c", 64)
 	addTestToken(t, a, cookie, token)
-	valid := `{"id":"用户\"1","device_hash":"1234567890abcdef","timestamp_ms":100000,"latitude":22.5,"longitude":113.9,"accuracy_m":null,"speed_mps":null,"bearing_deg":null,"altitude_m":null}`
+	valid := `{"type":"location","id":"用户\"1","device_hash":"1234567890abcdef","timestamp_ms":100000,"latitude":22.5,"longitude":113.9,"accuracy_m":null,"speed_mps":null,"bearing_deg":null,"altitude_m":null}`
+	for _, replacement := range []string{"", `"type":"",`, `"type":null,`} {
+		w := request(a, "POST", "/api/webhook", strings.Replace(valid, `"type":"location",`, replacement, 1), nil, token)
+		expect(t, w, 400)
+		var result map[string]string
+		if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil || result["code"] != "error.uploadType" {
+			t.Fatal("legacy payload accepted", err, result)
+		}
+	}
 	expect(t, request(a, "POST", "/api/webhook", valid, nil, ""), 401)
 	expect(t, request(a, "POST", "/api/webhook", valid, nil, strings.Repeat("f", 64)), 401)
 	for _, body := range []string{`{}`, strings.Replace(valid, `"latitude":22.5`, `"latitude":91`, 1), strings.Replace(valid, `"longitude":113.9`, `"longitude":null`, 1), strings.Replace(valid, `"accuracy_m":null`, `"accuracy_m":-1`, 1), strings.Replace(valid, `"bearing_deg":null`, `"bearing_deg":360`, 1), strings.Replace(valid, `"timestamp_ms":100000`, `"timestamp_ms":9999999999999999`, 1), valid + valid, strings.Repeat("a", 17000)} {
@@ -274,6 +282,9 @@ func TestWebhookValidationAndPersistence(t *testing.T) {
 	if count != 2 {
 		t.Fatal("not deduplicated", count)
 	}
+	if _, err := a.db.Exec("INSERT INTO points(reporting_id,device_hash,timestamp_ms,latitude,longitude) VALUES('missing','1234567890abcdef',1,0,0)"); err == nil {
+		t.Fatal("database supplied an implicit packet type")
+	}
 	var file string
 	_ = a.db.QueryRow("SELECT file FROM pragma_database_list WHERE name='main'").Scan(&file)
 	a.db.Close()
@@ -288,7 +299,7 @@ func TestWebhookValidationAndPersistence(t *testing.T) {
 	}
 }
 func pointAt(id, device string, ms int64, lat, lon float64) point {
-	return point{ID: id, Device: device, Time: ms, Lat: &lat, Lon: &lon}
+	return point{Type: "location", ID: id, Device: device, Time: ms, Lat: &lat, Lon: &lon}
 }
 func TestTrackBoundariesAndDistance(t *testing.T) {
 	points := []point{pointAt("a", "d", 1, 0, 0), pointAt("a", "d", 1800001, 0, 1), pointAt("a", "d", 3600002, 0, 2), pointAt("a", "e", 1, 0, 0), pointAt("b", "d", 1, 0, 0)}
@@ -317,12 +328,12 @@ func TestRecordingMarkerBoundaries(t *testing.T) {
 		points []point
 		counts []int
 	}{
-		{"explicit long gap", []point{marked(1, "start"), marked(3600001, ""), marked(7200001, "end")}, []int{3}},
-		{"end closes immediately", []point{marked(1, "start"), marked(2, "end"), marked(3, "")}, []int{1, 2}},
+		{"explicit long gap", []point{marked(1, "start"), marked(3600001, "location"), marked(7200001, "end")}, []int{3}},
+		{"end closes immediately", []point{marked(1, "start"), marked(2, "end"), marked(3, "location")}, []int{1, 2}},
 		{"new start closes missing end", []point{marked(1, "start"), marked(2, "start"), marked(3, "end")}, []int{2, 1}},
-		{"orphan end", []point{marked(1, ""), marked(2, "end"), marked(3, "end")}, []int{1, 2}},
+		{"orphan end", []point{marked(1, "location"), marked(2, "end"), marked(3, "end")}, []int{1, 2}},
 		{"same timestamp single point record", []point{marked(1, "start"), marked(1, "end")}, []int{2}},
-		{"unmarked fallback", []point{marked(1, ""), marked(1800001, ""), marked(3600002, "")}, []int{1, 2}},
+		{"unmarked fallback", []point{marked(1, "location"), marked(1800001, "location"), marked(3600002, "location")}, []int{1, 2}},
 		{"devices stay separate", []point{marked(1, "start"), pointAt("a", "e", 1, 0, 0), pointAt("a", "e", 3600001, 0, 1)}, []int{1, 1, 1}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -364,7 +375,7 @@ func TestWebhookPacketTypes(t *testing.T) {
 	if err := a.db.QueryRow("SELECT count(*) FROM points").Scan(&count); err != nil || count != 0 {
 		t.Fatal("test stored a point", err, count)
 	}
-	for _, body := range []string{`{"type":"unknown"}`, `{"type":1}`, `{"type":"start"}`, `{"type":"end"}`} {
+	for _, body := range []string{`{}`, `{"type":""}`, `{"type":null}`, `{"type":"unknown"}`, `{"type":1}`, `{"type":"start"}`, `{"type":"end"}`} {
 		expect(t, request(a, "POST", "/api/webhook", body, nil, token), 400)
 	}
 	base, _ := time.ParseInLocation("2006-01-02 15:04", "2026-01-01 23:55", a.location)
@@ -372,7 +383,7 @@ func TestWebhookPacketTypes(t *testing.T) {
 	for _, item := range []struct {
 		kind    string
 		minutes int
-	}{{"end", 130}, {"start", 0}, {"", 65}} {
+	}{{"end", 130}, {"start", 0}, {"location", 65}} {
 		p := pointAt("record", "1234567890abcdef", base.Add(time.Duration(item.minutes)*time.Minute).UnixMilli(), 0, float64(item.minutes)/65)
 		p.Type = item.kind
 		b, _ := json.Marshal(p)
@@ -426,42 +437,13 @@ func TestWebhookPacketTypes(t *testing.T) {
 	expect(t, request(a, "POST", "/api/webhook", body, nil, token), 401)
 }
 
-func TestLegacyPointMigration(t *testing.T) {
-	a := testApp(t)
-	// Reproduce the old schema with an existing fix, then reopen twice.
-	_, err := a.db.Exec(`DROP TABLE points;
-CREATE TABLE points (reporting_id TEXT NOT NULL,device_hash TEXT NOT NULL,timestamp_ms INTEGER NOT NULL,latitude REAL NOT NULL,longitude REAL NOT NULL,accuracy_m REAL,speed_mps REAL,bearing_deg REAL,altitude_m REAL,UNIQUE(reporting_id,device_hash,timestamp_ms));
-INSERT INTO points VALUES('old','1234567890abcdef',1000,0,0,NULL,NULL,NULL,NULL);
-CREATE INDEX points_time ON points(timestamp_ms);
-CREATE INDEX points_stream_time ON points(reporting_id,device_hash,timestamp_ms);`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var file string
-	_ = a.db.QueryRow("SELECT file FROM pragma_database_list WHERE name='main'").Scan(&file)
-	a.db.Close()
-	for range 2 {
-		b, err := newApp(file, a.location, "", t.TempDir())
-		if err != nil {
-			t.Fatal(err)
-		}
-		var count int
-		if err := b.db.QueryRow("SELECT count(*) FROM points WHERE type='' AND reporting_id='old'").Scan(&count); err != nil || count != 1 {
-			t.Fatal("lost legacy fix", err, count)
-		}
-		if _, err := b.db.Exec("INSERT INTO points(reporting_id,device_hash,timestamp_ms,latitude,longitude,type) VALUES('old','1234567890abcdef',1000,0,0,'start') ON CONFLICT DO NOTHING"); err != nil {
-			t.Fatal(err)
-		}
-		b.db.Close()
-	}
-}
 func TestDateFilteringPaginationAndDetail(t *testing.T) {
 	a := testApp(t)
 	cookie := registerTestUser(t, a)
 	base, _ := time.ParseInLocation("2006-01-02 15:04", "2026-01-01 23:55", a.location)
 	for i := 0; i < 4; i++ {
 		p := pointAt("daily", "1234567890abcdef", base.Add(time.Duration(i)*5*time.Minute).UnixMilli(), 0, float64(i))
-		_, err := a.db.Exec("INSERT INTO points(reporting_id,device_hash,timestamp_ms,latitude,longitude) VALUES(?,?,?,?,?)", p.ID, p.Device, p.Time, p.Lat, p.Lon)
+		_, err := a.db.Exec("INSERT INTO points(reporting_id,device_hash,timestamp_ms,latitude,longitude,type) VALUES(?,?,?,?,?,'location')", p.ID, p.Device, p.Time, p.Lat, p.Lon)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -490,7 +472,7 @@ func TestDateFilteringPaginationAndDetail(t *testing.T) {
 		expect(t, request(a, "GET", "/api/tracks"+q, "", cookie, ""), 400)
 	}
 	for i := 0; i < 55; i++ {
-		_, err := a.db.Exec("INSERT INTO points(reporting_id,device_hash,timestamp_ms,latitude,longitude) VALUES('many','1234567890abcdef',?,0,0)", base.Add(time.Duration(i)*31*time.Minute).UnixMilli())
+		_, err := a.db.Exec("INSERT INTO points(reporting_id,device_hash,timestamp_ms,latitude,longitude,type) VALUES('many','1234567890abcdef',?,0,0,'location')", base.Add(time.Duration(i)*31*time.Minute).UnixMilli())
 		if err != nil {
 			t.Fatal(err)
 		}

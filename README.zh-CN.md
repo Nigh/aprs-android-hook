@@ -127,16 +127,16 @@ curl --fail-with-body https://tracks.example.com/api/webhook \
 
 ### 记录包类型
 
-`POST /api/webhook` 支持以下可选 `type`：
+`POST /api/webhook` 要求提供以下一种 `type`：
 
 | `type` | 行为 |
 | --- | --- |
-| 省略或 `""` | 普通定位，兼容现有 Android 上传格式。 |
+| `"location"` | 普通定位。 |
 | `"test"` | 校验 Bearer token 并返回测试响应，不要求或保存定位字段。 |
 | `"start"` | 保存定位，标记新记录的第一个点。 |
 | `"end"` | 保存定位，标记当前记录的最后一个点。 |
 
-未知类型返回 HTTP 400。起止包的**字段和校验与普通定位相同**：必须提供 `id`、`device_hash`、`timestamp_ms`、`latitude`、`longitude`，可选 `accuracy_m`、`speed_mps`、`bearing_deg`、`altitude_m` 可以为空。每个标记携带自身的实测位置和时间；起点与终点的坐标不必相等。例如：
+缺失、空字符串、null 或未知类型返回 HTTP 400。起止包的**字段和校验与普通定位相同**：必须提供 `id`、`device_hash`、`timestamp_ms`、`latitude`、`longitude`，可选 `accuracy_m`、`speed_mps`、`bearing_deg`、`altitude_m` 可以为空。每个标记携带自身的实测位置和时间；起点与终点的坐标不必相等。例如：
 
 ```json
 {"type":"start","id":"my-phone","device_hash":"0123456789abcdef","timestamp_ms":1767225600000,"latitude":31.2304,"longitude":121.4737,"accuracy_m":5,"speed_mps":null,"bearing_deg":null,"altitude_m":null}
@@ -144,7 +144,7 @@ curl --fail-with-body https://tracks.example.com/api/webhook \
 
 定位及起止包成功返回 `{"ok":true}`。按上报 ID、设备、时间戳和**类型**去重；重试相同包时不要改变类型。单位置记录的起止包可以使用相同时间戳；同时间戳按起始、普通定位、结束的顺序处理。
 
-这是服务端新增协议，需要 Android 主动发送标记才能使用明确的记录边界。旧客户端继续使用下面的保底规则；仅更新服务端不会给 Android 增加测试按钮或起止包生成功能。
+Android 每次上传必须明确指定 `type`，并主动发送起止标记来定义记录边界。仅更新服务端不会给 Android 增加测试按钮或起止包生成功能。
 
 ## 路径与统计怎么算
 
@@ -159,8 +159,6 @@ curl --fail-with-body https://tracks.example.com/api/webhook \
 地图由 [OpenFreeMap](https://openfreemap.org/) 提供，使用 OpenStreetMap 数据。浏览器需要能访问地图服务并支持 WebGL；地图加载失败不会阻止查看路径列表和统计。PWA 只缓存界面静态资源，离线时不能查询私有轨迹。
 
 ## 数据备份、恢复和升级
-
-支持包类型的版本首次启动时会自动迁移旧定位数据库，已有定位保留为普通上传。升级前先备份数据目录；需要降级到旧服务端时请恢复升级前的备份。
 
 SQLite 数据保存在 Compose 的 `data` 卷中，包含唯一账户、登录会话、token 哈希和全部定位点。备份应保存在可信位置。
 

@@ -12,7 +12,7 @@ import (
 )
 
 type point struct {
-	Type     string   `json:"type,omitempty"`
+	Type     string   `json:"type"`
 	ID       string   `json:"id"`
 	Device   string   `json:"device_hash"`
 	Time     int64    `json:"timestamp_ms"`
@@ -125,12 +125,12 @@ func (a *app) queryTracks(r *http.Request) ([]track, summary, error) {
 	}
 	rows, err := a.db.QueryContext(r.Context(), `WITH preceding AS (
 SELECT reporting_id,device_hash,max(timestamp_ms) AS timestamp_ms FROM points
-WHERE type!='' AND timestamp_ms<?1 AND (?3='' OR reporting_id=?3) AND (?4='' OR device_hash=?4)
+WHERE type IN ('start','end') AND timestamp_ms<?1 AND (?3='' OR reporting_id=?3) AND (?4='' OR device_hash=?4)
 GROUP BY reporting_id,device_hash
 ), selected AS (
 SELECT p.* FROM points p WHERE timestamp_ms>=?1 AND timestamp_ms<?2 AND (?3='' OR reporting_id=?3) AND (?4='' OR device_hash=?4)
 UNION ALL
-SELECT p.* FROM points p JOIN preceding m USING(reporting_id,device_hash,timestamp_ms) WHERE p.type!=''
+SELECT p.* FROM points p JOIN preceding m USING(reporting_id,device_hash,timestamp_ms) WHERE p.type IN ('start','end')
 )
 SELECT reporting_id,device_hash,timestamp_ms,latitude,longitude,accuracy_m,speed_mps,bearing_deg,altitude_m,type FROM selected
 ORDER BY reporting_id,device_hash,timestamp_ms,CASE type WHEN 'start' THEN 0 WHEN 'end' THEN 2 ELSE 1 END`, start.UnixMilli(), end.AddDate(0, 0, 1).UnixMilli(), q.Get("id"), q.Get("device"))
