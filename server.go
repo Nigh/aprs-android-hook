@@ -388,7 +388,11 @@ func (a *app) webhook(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &p) {
 		return
 	}
-	if strings.TrimSpace(p.ID) == "" || utf8.RuneCountInString(p.ID) > 128 || !devicePattern.MatchString(p.Device) || p.Time <= 0 || p.Time > time.Now().Add(5*time.Minute).UnixMilli() || p.Lat == nil || p.Lon == nil || !finite(p.Lat) || !finite(p.Lon) || *p.Lat < -90 || *p.Lat > 90 || *p.Lon < -180 || *p.Lon > 180 || !finite(p.Accuracy) || !finite(p.Speed) || !finite(p.Bearing) || !finite(p.Altitude) || (p.Accuracy != nil && *p.Accuracy < 0) || (p.Speed != nil && *p.Speed < 0) || (p.Bearing != nil && (*p.Bearing < 0 || *p.Bearing >= 360)) {
+	if p.Type != "" && p.Type != "test" && p.Type != "start" && p.Type != "end" {
+		fail(w, 400, "上传类型无效")
+		return
+	}
+	if p.Type != "test" && (strings.TrimSpace(p.ID) == "" || utf8.RuneCountInString(p.ID) > 128 || !devicePattern.MatchString(p.Device) || p.Time <= 0 || p.Time > time.Now().Add(5*time.Minute).UnixMilli() || p.Lat == nil || p.Lon == nil || !finite(p.Lat) || !finite(p.Lon) || *p.Lat < -90 || *p.Lat > 90 || *p.Lon < -180 || *p.Lon > 180 || !finite(p.Accuracy) || !finite(p.Speed) || !finite(p.Bearing) || !finite(p.Altitude) || (p.Accuracy != nil && *p.Accuracy < 0) || (p.Speed != nil && *p.Speed < 0) || (p.Bearing != nil && (*p.Bearing < 0 || *p.Bearing >= 360))) {
 		fail(w, 400, "定位字段缺失或超出有效范围")
 		return
 	}
@@ -408,7 +412,11 @@ func (a *app) webhook(w http.ResponseWriter, r *http.Request) {
 		fail(w, 503, "数据库暂不可用")
 		return
 	}
-	_, err = tx.Exec(`INSERT INTO points VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(reporting_id,device_hash,timestamp_ms) DO NOTHING`, p.ID, p.Device, p.Time, p.Lat, p.Lon, p.Accuracy, p.Speed, p.Bearing, p.Altitude)
+	if p.Type == "test" {
+		respond(w, 200, map[string]any{"ok": true, "type": "test"})
+		return
+	}
+	_, err = tx.Exec(`INSERT INTO points(reporting_id,device_hash,timestamp_ms,latitude,longitude,accuracy_m,speed_mps,bearing_deg,altitude_m,type) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(reporting_id,device_hash,timestamp_ms,type) DO NOTHING`, p.ID, p.Device, p.Time, p.Lat, p.Lon, p.Accuracy, p.Speed, p.Bearing, p.Altitude, p.Type)
 	if err == nil {
 		_, err = tx.Exec("UPDATE tokens SET last_upload_ms=? WHERE key=?", time.Now().UnixMilli(), key)
 	}

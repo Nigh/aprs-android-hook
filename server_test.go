@@ -237,6 +237,21 @@ func TestHTTPSUpload(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf("HTTPS upload: %d", resp.StatusCode)
 	}
+	r, err = http.NewRequest("POST", server.URL+"/api/webhook", strings.NewReader(`{"type":"test"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Authorization", "Bearer "+token)
+	testResp, err := server.Client().Do(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer testResp.Body.Close()
+	var result map[string]any
+	if err := json.NewDecoder(testResp.Body).Decode(&result); err != nil || testResp.StatusCode != 200 || result["ok"] != true || result["type"] != "test" {
+		t.Fatal("HTTPS test response", err, testResp.StatusCode, result)
+	}
 }
 func TestWebhookValidationAndPersistence(t *testing.T) {
 	a := testApp(t)
@@ -288,6 +303,156 @@ func TestTrackBoundariesAndDistance(t *testing.T) {
 	}
 	if d := distance(pointAt("a", "d", 1, 0, 179.9), pointAt("a", "d", 2, 0, -179.9)); d > 23000 || d < 22000 {
 		t.Fatal("antimeridian distance", d)
+	}
+}
+
+func TestRecordingMarkerBoundaries(t *testing.T) {
+	marked := func(ms int64, kind string) point {
+		p := pointAt("a", "d", ms, 0, float64(ms)/3600000)
+		p.Type = kind
+		return p
+	}
+	for _, tc := range []struct {
+		name   string
+		points []point
+		counts []int
+	}{
+		{"explicit long gap", []point{marked(1, "start"), marked(3600001, ""), marked(7200001, "end")}, []int{3}},
+		{"end closes immediately", []point{marked(1, "start"), marked(2, "end"), marked(3, "")}, []int{1, 2}},
+		{"new start closes missing end", []point{marked(1, "start"), marked(2, "start"), marked(3, "end")}, []int{2, 1}},
+		{"orphan end", []point{marked(1, ""), marked(2, "end"), marked(3, "end")}, []int{1, 2}},
+		{"same timestamp single point record", []point{marked(1, "start"), marked(1, "end")}, []int{2}},
+		{"unmarked fallback", []point{marked(1, ""), marked(1800001, ""), marked(3600002, "")}, []int{1, 2}},
+		{"devices stay separate", []point{marked(1, "start"), pointAt("a", "e", 1, 0, 0), pointAt("a", "e", 3600001, 0, 1)}, []int{1, 1, 1}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tracks, total := groupTracks(tc.points)
+			if len(tracks) != len(tc.counts) || total.Points != len(tc.points) {
+				t.Fatalf("tracks=%+v total=%+v", tracks, total)
+			}
+			for i, count := range tc.counts {
+				if tracks[i].Count != count {
+					t.Fatalf("track %d has %d points, want %d", i, tracks[i].Count, count)
+				}
+			}
+		})
+	}
+}
+
+func TestWebhookPacketTypes(t *testing.T) {
+	a := testApp(t)
+	cookie := registerTestUser(t, a)
+	token := strings.Repeat("e", 64)
+	key := addTestToken(t, a, cookie, token)
+	body := `{"type":"test"}`
+	expect(t, request(a, "POST", "/api/webhook", body, nil, ""), 401)
+	expect(t, request(a, "POST", "/api/webhook", body, nil, strings.Repeat("f", 64)), 401)
+	w := request(a, "POST", "/api/webhook", body, nil, token)
+	expect(t, w, 200)
+	var response struct {
+		OK   bool   `json:"ok"`
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil || !response.OK || response.Type != "test" {
+		t.Fatal(w.Body.String(), err)
+	}
+	var count int
+	var last *int64
+	if err := a.db.QueryRow("SELECT last_upload_ms FROM tokens WHERE key=?", key).Scan(&last); err != nil || last != nil {
+		t.Fatal("test changed upload time", err, last)
+	}
+	if err := a.db.QueryRow("SELECT count(*) FROM points").Scan(&count); err != nil || count != 0 {
+		t.Fatal("test stored a point", err, count)
+	}
+	for _, body := range []string{`{"type":"unknown"}`, `{"type":1}`, `{"type":"start"}`, `{"type":"end"}`} {
+		expect(t, request(a, "POST", "/api/webhook", body, nil, token), 400)
+	}
+	base, _ := time.ParseInLocation("2006-01-02 15:04", "2026-01-01 23:55", a.location)
+	// Deliver the end first, then the start and intermediate point; resend each packet.
+	for _, item := range []struct {
+		kind    string
+		minutes int
+	}{{"end", 130}, {"start", 0}, {"", 65}} {
+		p := pointAt("record", "1234567890abcdef", base.Add(time.Duration(item.minutes)*time.Minute).UnixMilli(), 0, float64(item.minutes)/65)
+		p.Type = item.kind
+		b, _ := json.Marshal(p)
+		for range 2 {
+			expect(t, request(a, "POST", "/api/webhook", string(b), nil, token), 200)
+		}
+	}
+	query := "?from=2026-01-02&to=2026-01-02&id=record&device=1234567890abcdef"
+	w = request(a, "GET", "/api/tracks"+query, "", cookie, "")
+	expect(t, w, 200)
+	var result struct {
+		Tracks  []track `json:"tracks"`
+		Summary summary `json:"summary"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Summary.Points != 2 || result.Summary.Tracks != 1 || result.Summary.Duration != 65*60000 || math.Abs(result.Summary.Distance-111195.0802) > 0.1 {
+		t.Fatalf("clipped marked record: %+v", result)
+	}
+	w = request(a, "GET", "/api/tracks/"+result.Tracks[0].Key+query, "", cookie, "")
+	expect(t, w, 200)
+	var detail track
+	if err := json.Unmarshal(w.Body.Bytes(), &detail); err != nil {
+		t.Fatal(err)
+	}
+	if len(detail.Points) != 2 || detail.Points[1].Type != "end" || detail.Distance != result.Summary.Distance {
+		t.Fatalf("detail: %+v", detail)
+	}
+	for _, kind := range []string{"start", "end", "start", "end"} {
+		p := pointAt("single", "1234567890abcdef", base.UnixMilli(), 0, 0)
+		p.Type = kind
+		b, _ := json.Marshal(p)
+		expect(t, request(a, "POST", "/api/webhook", string(b), nil, token), 200)
+	}
+	if err := a.db.QueryRow("SELECT count(*) FROM points").Scan(&count); err != nil || count != 5 {
+		t.Fatal("packet deduplication", err, count)
+	}
+	expect(t, request(a, "POST", "/api/webhook", `{"type":"test"}`, nil, token), 200)
+	var after *int64
+	_ = a.db.QueryRow("SELECT last_upload_ms FROM tokens WHERE key=?", key).Scan(&after)
+	if after == nil {
+		t.Fatal("location did not set upload time")
+	}
+	expect(t, request(a, "POST", "/api/webhook", body, nil, token), 200)
+	_ = a.db.QueryRow("SELECT last_upload_ms FROM tokens WHERE key=?", key).Scan(&last)
+	if last == nil || *last != *after {
+		t.Fatal("test changed existing upload time")
+	}
+	expect(t, request(a, "DELETE", "/api/tokens/"+key, "", cookie, ""), 200)
+	expect(t, request(a, "POST", "/api/webhook", body, nil, token), 401)
+}
+
+func TestLegacyPointMigration(t *testing.T) {
+	a := testApp(t)
+	// Reproduce the old schema with an existing fix, then reopen twice.
+	_, err := a.db.Exec(`DROP TABLE points;
+CREATE TABLE points (reporting_id TEXT NOT NULL,device_hash TEXT NOT NULL,timestamp_ms INTEGER NOT NULL,latitude REAL NOT NULL,longitude REAL NOT NULL,accuracy_m REAL,speed_mps REAL,bearing_deg REAL,altitude_m REAL,UNIQUE(reporting_id,device_hash,timestamp_ms));
+INSERT INTO points VALUES('old','1234567890abcdef',1000,0,0,NULL,NULL,NULL,NULL);
+CREATE INDEX points_time ON points(timestamp_ms);
+CREATE INDEX points_stream_time ON points(reporting_id,device_hash,timestamp_ms);`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var file string
+	_ = a.db.QueryRow("SELECT file FROM pragma_database_list WHERE name='main'").Scan(&file)
+	a.db.Close()
+	for range 2 {
+		b, err := newApp(file, a.location, "", t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var count int
+		if err := b.db.QueryRow("SELECT count(*) FROM points WHERE type='' AND reporting_id='old'").Scan(&count); err != nil || count != 1 {
+			t.Fatal("lost legacy fix", err, count)
+		}
+		if _, err := b.db.Exec("INSERT INTO points(reporting_id,device_hash,timestamp_ms,latitude,longitude,type) VALUES('old','1234567890abcdef',1000,0,0,'start') ON CONFLICT DO NOTHING"); err != nil {
+			t.Fatal(err)
+		}
+		b.db.Close()
 	}
 }
 func TestDateFilteringPaginationAndDetail(t *testing.T) {

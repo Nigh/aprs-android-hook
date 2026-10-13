@@ -111,7 +111,7 @@ The phone may still upload webhook locations when stop zones or other rules bloc
 
 Refreshing a phone token does not update the server automatically. Delete the old entry and register the new token. Deletion immediately blocks subsequent uploads while keeping existing tracks. The server stores only a hash and cannot recover the full token.
 
-### Check an upload with curl
+### Test the webhook with curl
 
 Replace `TOKEN` with the phone token you have registered. Do not commit real tokens or post them in public logs.
 
@@ -120,16 +120,38 @@ TOKEN='replace-with-your-64-character-phone-token'
 curl --fail-with-body https://tracks.example.com/api/webhook \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  --data '{"id":"connection-test","device_hash":"0123456789abcdef","timestamp_ms":1767225600000,"latitude":31.2304,"longitude":121.4737,"accuracy_m":5,"speed_mps":null,"bearing_deg":null,"altitude_m":null}'
+  --data '{"type":"test"}'
 ```
 
-A successful request returns `{"ok":true}`. This test point is at 08:00 on January 1, 2026 in the Shanghai timezone; select that date to see it. It remains in your location history. Repeating the same reporting ID, device, and timestamp does not add another point.
+A successful test returns HTTP 200 and `{"ok":true,"type":"test"}`. Check both the status and JSON response. This verifies connectivity and token authentication without adding a location or changing the token's last upload time. A real location upload is still needed to verify location storage. Coordinates `(0,0)` are valid locations, not test signals.
+
+### Recording packet types
+
+`POST /api/webhook` accepts these optional `type` values:
+
+| `type` | Behavior |
+| --- | --- |
+| Omitted or `""` | Ordinary location update, compatible with existing Android uploads. |
+| `"test"` | Authenticate the Bearer token and return a test response; no location fields are required or stored. |
+| `"start"` | Store a location as the first point of a new recording. |
+| `"end"` | Store a location as the last point of the current recording. |
+
+Unknown types return HTTP 400. `start` and `end` require the **same fields and validation as ordinary locations**: `id`, `device_hash`, `timestamp_ms`, `latitude`, `longitude`, plus optional nullable `accuracy_m`, `speed_mps`, `bearing_deg`, and `altitude_m`. Each marker carries its own measured position and timestamp; start and end coordinates do not have to match. For example:
+
+```json
+{"type":"start","id":"my-phone","device_hash":"0123456789abcdef","timestamp_ms":1767225600000,"latitude":31.2304,"longitude":121.4737,"accuracy_m":5,"speed_mps":null,"bearing_deg":null,"altitude_m":null}
+```
+
+Location and marker uploads return `{"ok":true}`. The server deduplicates by reporting ID, device, timestamp **and type**; retry an identical packet without changing its type. Distinct start/end packets can share a timestamp for a single-position recording. At equal timestamps, the order is start, ordinary location, then end.
+
+These types are a server protocol extension: Android must send the markers to use explicit recording boundaries. Older clients continue to use the fallback rules below. Updating this server does not add a test button or marker generation to the Android app.
 
 ## Tracks and statistics
 
-- Points are sorted by time within each reporting ID and device. A gap **over 30 minutes** starts a new segment; exactly 30 minutes remains in the same segment.
+- Points are sorted by time within each reporting ID and device. `start` begins a new segment; `end` belongs to that segment and closes it. A new `start` also closes an earlier recording that never received its end marker. A point after `end` starts a separate segment even if it arrives less than 30 minutes later.
+- An explicitly started recording stays together until `end` or another `start`, including gaps longer than 30 minutes. For unmarked points, a gap **over 30 minutes** remains a fallback; exactly 30 minutes stays together. An orphan `end` closes the fallback segment containing it. A missing end cannot be distinguished from a long pause, so a started recording remains open until the next marker.
 - Distance is the sum of spherical distances between consecutive points in each segment, not a road-navigation distance. GPS drift can increase the result; this version does not automatically filter it.
-- Recorded duration is the sum of each segment's last timestamp minus its first timestamp. It includes stops within a segment and excludes gaps over 30 minutes. It is not actual movement time.
+- Recorded duration is the sum of each segment's last timestamp minus its first timestamp. It includes stops and gaps within an explicitly marked recording, and excludes intervals between segments. It is not actual movement time.
 - A single-point track has zero distance and duration. Different reporting IDs or devices are never connected; changing a token alone does not split a track.
 - Date ranges include the entire end date in the displayed deployment timezone. Statistics and maps use only points inside the selected range; tracks crossing the boundary are clipped.
 - Lists contain 50 tracks per page; totals cover the entire filter result. Out-of-order uploads are included the next time you query, so segment boundaries can change.
@@ -137,6 +159,8 @@ A successful request returns `{"ok":true}`. This test point is at 08:00 on Janua
 Maps are provided by [OpenFreeMap](https://openfreemap.org/) using OpenStreetMap data. Your browser needs network access to the map service and WebGL support. Map failures do not prevent browsing the list and statistics. The PWA caches only the static app shell; private tracks cannot be queried offline. The installed PWA name and description use English; its interface follows your saved language choice.
 
 ## Back up, restore, and upgrade
+
+The first startup of a version supporting packet types automatically migrates older location databases, preserving existing points as ordinary uploads. Back up the data directory before upgrading; restore that backup if you need to downgrade to an older server.
 
 The Compose `data` volume contains the SQLite database: your account, sessions, token hashes, and all location points. Keep backups in a trusted place.
 
