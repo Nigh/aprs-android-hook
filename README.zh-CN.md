@@ -19,15 +19,9 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-默认只在宿主机 `127.0.0.1:18080` 提供 HTTP 服务。浏览器打开 `http://localhost:18080`，创建唯一账户。密码至少12个字符，最多72字节。**先在本地注册，再开放公网访问**，首个注册者会成为唯一用户。
+默认在宿主机 `0.0.0.0:18080` 提供 HTTP 服务，可直接从公网访问。在服务器防火墙中放行 TCP 18080 端口，浏览器打开 `http://服务器公网IP:18080` 注册。**首个成功注册者即为唯一用户，此后拒绝所有注册请求。**密码至少12个字符，最多72字节。轨迹和上传设置仍需登录后访问。
 
-在远程服务器部署时，用 SSH 隧道打开本地注册页面：
-
-```sh
-ssh -L 18080:127.0.0.1:18080 user@your-server
-```
-
-连接后在自己电脑打开 `http://localhost:18080`。不要执行 `docker compose down -v`，它会删除包含账户和轨迹的数据卷。
+如需 HTTPS，按下文配置 Caddy 后直接在 HTTPS 地址注册。直接 HTTP 访问不会加密密码或定位数据。不要执行 `docker compose down -v`，它会删除包含账户和轨迹的数据卷，并重新开放注册。
 
 ### 修改端口和时区
 
@@ -35,19 +29,20 @@ ssh -L 18080:127.0.0.1:18080 user@your-server
 
 ```dotenv
 PORT=18081
-BIND_ADDRESS=127.0.0.1
+BIND_ADDRESS=0.0.0.0
 TZ=Asia/Shanghai
 PUBLIC_URL=
 ```
 
-`PORT` 是宿主机端口，容器内始终为8080。`TZ` 控制日期筛选和界面时间；可改成其他 IANA 时区。默认绑定回环地址，配合宿主机 Caddy 使用。
+`PORT` 是宿主机端口，容器内始终为8080。`TZ` 控制日期筛选和界面时间；可改成其他 IANA 时区。`BIND_ADDRESS` 默认是 `0.0.0.0`，允许公网访问。已有部署若在 `.env` 中设置了 `BIND_ADDRESS=127.0.0.1`，需同步修改才能直接开放公网访问。
 
 ## 用 Caddy 提供 HTTPS
 
-Android 只接受 HTTPS webhook 地址。先将域名 DNS 指向服务器，确保 Caddy 可以使用公网80和443端口；完成本地账户注册后，在 `.env` 设置：
+Android 只接受 HTTPS webhook 地址。先将域名 DNS 指向服务器，确保 Caddy 可以使用公网80和443端口；Caddy 运行在宿主机时，在 `.env` 设置：
 
 ```dotenv
 PUBLIC_URL=https://tracks.example.com
+BIND_ADDRESS=127.0.0.1
 ```
 
 `PUBLIC_URL` 必须是浏览器访问的完整源地址，不能包含路径。它用于同源校验及 Secure 登录 Cookie；不要仅修改反代地址而忘记这个配置。
@@ -68,7 +63,7 @@ sudo caddy validate --config /etc/caddy/Caddyfile
 sudo systemctl reload caddy
 ```
 
-随后打开 `https://tracks.example.com` 登录。整个站点反代到应用，包括 `/api/webhook`，不要增加尾斜杠重定向。应用不信任任意客户端发送的代理头，以 `PUBLIC_URL` 判断外部地址。HTTP 到 HTTPS 的跳转由 Caddy 负责。[Caddy 反代文档](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
+随后打开 `https://tracks.example.com` 注册或登录；已有账户时只允许登录。整个站点反代到应用，包括 `/api/webhook`，不要增加尾斜杠重定向。应用不信任任意客户端发送的代理头，以 `PUBLIC_URL` 判断外部地址。HTTP 到 HTTPS 的跳转由 Caddy 负责。[Caddy 反代文档](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
 
 ### Caddy 也运行在容器内
 
@@ -95,7 +90,7 @@ networks:
     name: aprs-android-hook_default
 ```
 
-不要为解决容器互通而直接将应用端口开放到公网。
+仅通过容器内 Caddy 提供公网访问时，可保留 `BIND_ADDRESS=127.0.0.1`，容器间通过 `app:8080` 连接。
 
 ## 连接 aprs-android
 

@@ -19,15 +19,9 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-By default, the HTTP service is available only at `127.0.0.1:18080` on the host. Open `http://localhost:18080` and create the only account. Passwords require at least 12 characters and at most 72 bytes. **Register locally before exposing the service publicly:** the first person to register becomes its only user.
+By default, the HTTP service binds to `0.0.0.0:18080` on the host for public access. Allow TCP port 18080 in your server’s firewall and open `http://your-server-ip:18080` to register. **The first person to complete registration becomes the only user; all later registrations are rejected.** Passwords require at least 12 characters and at most 72 bytes. Tracks and upload settings require signing in.
 
-For a remote server, open the registration page through an SSH tunnel:
-
-```sh
-ssh -L 18080:127.0.0.1:18080 user@your-server
-```
-
-Then open `http://localhost:18080` on your own computer. Do not run `docker compose down -v`; it deletes the volume containing your account and tracks.
+For HTTPS, configure Caddy as described below and register directly at your HTTPS address. Direct HTTP access does not encrypt credentials or location data. Do not run `docker compose down -v`; it deletes the volume containing your account and tracks and reopens registration.
 
 ### Change the port and timezone
 
@@ -35,19 +29,20 @@ Edit `.env`, then run `docker compose up -d`:
 
 ```dotenv
 PORT=18081
-BIND_ADDRESS=127.0.0.1
+BIND_ADDRESS=0.0.0.0
 TZ=Asia/Shanghai
 PUBLIC_URL=
 ```
 
-`PORT` is the host port; the container always uses port 8080. `TZ` controls date filters and displayed timestamps and accepts IANA timezone names. The default loopback binding works with Caddy on the host.
+`PORT` is the host port; the container always uses port 8080. `TZ` controls date filters and displayed timestamps and accepts IANA timezone names. `BIND_ADDRESS` defaults to `0.0.0.0` for public access. Existing deployments must update `BIND_ADDRESS=127.0.0.1` in `.env` to enable direct public access.
 
 ## Provide HTTPS with Caddy
 
-Android accepts only HTTPS webhook URLs. Point your domain's DNS at the server and make ports 80 and 443 available to Caddy. After registering locally, set this in `.env`:
+Android accepts only HTTPS webhook URLs. Point your domain's DNS at the server and make ports 80 and 443 available to Caddy. For Caddy running on the host, set this in `.env`:
 
 ```dotenv
 PUBLIC_URL=https://tracks.example.com
+BIND_ADDRESS=127.0.0.1
 ```
 
 `PUBLIC_URL` must match the browser's complete origin and must not include a path. It controls same-origin checks and Secure login cookies; update it when changing the external address.
@@ -68,7 +63,7 @@ sudo caddy validate --config /etc/caddy/Caddyfile
 sudo systemctl reload caddy
 ```
 
-Sign in at `https://tracks.example.com`. Proxy the entire site, including `/api/webhook`, to the app. Do not add trailing-slash redirects. The app uses `PUBLIC_URL` to identify its external origin rather than trusting arbitrary client-supplied proxy headers. Caddy handles HTTP-to-HTTPS redirects. [Caddy reverse proxy documentation](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
+Sign in at `https://tracks.example.com` (or register if no account exists yet). Proxy the entire site, including `/api/webhook`, to the app. Do not add trailing-slash redirects. The app uses `PUBLIC_URL` to identify its external origin rather than trusting arbitrary client-supplied proxy headers. Caddy handles HTTP-to-HTTPS redirects. [Caddy reverse proxy documentation](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
 
 ### Caddy running in a container
 
@@ -95,7 +90,7 @@ networks:
     name: aprs-android-hook_default
 ```
 
-Do not expose the app's port publicly just to connect the containers.
+When using containerized Caddy as the only public entry point, keep `BIND_ADDRESS=127.0.0.1`; the containers connect through `app:8080`.
 
 ## Connect aprs-android
 
