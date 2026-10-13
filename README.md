@@ -127,16 +127,16 @@ A successful test returns HTTP 200 and `{"ok":true,"type":"test"}`. Check both t
 
 ### Recording packet types
 
-`POST /api/webhook` accepts these optional `type` values:
+`POST /api/webhook` requires one of these `type` values:
 
 | `type` | Behavior |
 | --- | --- |
-| Omitted or `""` | Ordinary location update, compatible with existing Android uploads. |
+| `"location"` | Ordinary location update. |
 | `"test"` | Authenticate the Bearer token and return a test response; no location fields are required or stored. |
 | `"start"` | Store a location as the first point of a new recording. |
 | `"end"` | Store a location as the last point of the current recording. |
 
-Unknown types return HTTP 400. `start` and `end` require the **same fields and validation as ordinary locations**: `id`, `device_hash`, `timestamp_ms`, `latitude`, `longitude`, plus optional nullable `accuracy_m`, `speed_mps`, `bearing_deg`, and `altitude_m`. Each marker carries its own measured position and timestamp; start and end coordinates do not have to match. For example:
+Missing, empty, null, or unknown types return HTTP 400. `start` and `end` require the **same fields and validation as ordinary locations**: `id`, `device_hash`, `timestamp_ms`, `latitude`, `longitude`, plus optional nullable `accuracy_m`, `speed_mps`, `bearing_deg`, and `altitude_m`. Each marker carries its own measured position and timestamp; start and end coordinates do not have to match. For example:
 
 ```json
 {"type":"start","id":"my-phone","device_hash":"0123456789abcdef","timestamp_ms":1767225600000,"latitude":31.2304,"longitude":121.4737,"accuracy_m":5,"speed_mps":null,"bearing_deg":null,"altitude_m":null}
@@ -144,7 +144,7 @@ Unknown types return HTTP 400. `start` and `end` require the **same fields and v
 
 Location and marker uploads return `{"ok":true}`. The server deduplicates by reporting ID, device, timestamp **and type**; retry an identical packet without changing its type. Distinct start/end packets can share a timestamp for a single-position recording. At equal timestamps, the order is start, ordinary location, then end.
 
-These types are a server protocol extension: Android must send the markers to use explicit recording boundaries. Older clients continue to use the fallback rules below. Updating this server does not add a test button or marker generation to the Android app.
+Android must send an explicit `type` on every upload and send start/end markers to use recording boundaries. Updating this server does not add a test button or marker generation to the Android app.
 
 ## Tracks and statistics
 
@@ -159,8 +159,6 @@ These types are a server protocol extension: Android must send the markers to us
 Maps are provided by [OpenFreeMap](https://openfreemap.org/) using OpenStreetMap data. Your browser needs network access to the map service and WebGL support. Map failures do not prevent browsing the list and statistics. The PWA caches only the static app shell; private tracks cannot be queried offline. The installed PWA name and description use English; its interface follows your saved language choice.
 
 ## Back up, restore, and upgrade
-
-The first startup of a version supporting packet types automatically migrates older location databases, preserving existing points as ordinary uploads. Back up the data directory before upgrading; restore that backup if you need to downgrade to an older server.
 
 The Compose `data` volume contains the SQLite database: your account, sessions, token hashes, and all location points. Keep backups in a trusted place.
 

@@ -21,4 +21,4 @@ Use Nigh/xianii-theme tokens and interaction constraints. English-default interf
 Desktop: filters and totals above a track list and map side by side. Mobile: list and map stacked. Build directly in code; inspect desktop and mobile. No generated visual mockups required.
 
 ## Scope
-No multiple users, export, or motion detection. Existing Android webhook payloads remain compatible; optional test/start/end types extend the server protocol. Android marker generation is outside this repository.
+No multiple users, export, or motion detection. Every upload requires an explicit location/test/start/end type; no legacy payload compatibility or database migrations. Android marker generation is outside this repository.

@@ -388,7 +388,7 @@ func (a *app) webhook(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &p) {
 		return
 	}
-	if p.Type != "" && p.Type != "test" && p.Type != "start" && p.Type != "end" {
+	if p.Type != "location" && p.Type != "test" && p.Type != "start" && p.Type != "end" {
 		fail(w, 400, "上传类型无效")
 		return
 	}
