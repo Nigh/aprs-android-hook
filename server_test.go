@@ -46,6 +46,26 @@ func expect(t *testing.T, w *httptest.ResponseRecorder, status int) {
 		t.Fatalf("HTTP %d, want %d: %s", w.Code, status, w.Body.String())
 	}
 }
+
+func TestErrorTranslationCodes(t *testing.T) {
+	w := httptest.NewRecorder()
+	fail(w, 409, "最多登记16个 token")
+	var result map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result["error"] != "最多登记16个 token" || result["code"] != "error.tokenLimit" {
+		t.Fatal(result)
+	}
+	w = httptest.NewRecorder()
+	fail(w, 500, "unexpected database detail")
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result["code"] != "error.requestFailed" {
+		t.Fatal(result)
+	}
+}
 func registerTestUser(t *testing.T, a *app) *http.Cookie {
 	t.Helper()
 	w := request(a, "POST", "/api/register", `{"username":"test","password":"long-password-123"}`, nil, "")

@@ -1,12 +1,16 @@
 # aprs-android-hook
 
-[aprs-android](https://github.com/Nigh/aprs-android) 的自部署 webhook 服务端：接收手机定位，在浏览器中按日期查看路径、距离与记录时长，并在 OSM 地图上回看行程。
+**English** | [简体中文](README.zh-CN.md)
 
-每个部署只有一个账户，可登记最多16个手机上传 token。Go + SQLite + Svelte，前后端由同一个服务提供，无需单独部署数据库。界面遵循 [xianii-theme](https://github.com/Nigh/xianii-theme)，地图沿用 Android 的 OpenFreeMap 深色样式。
+A self-hosted webhook server for [aprs-android](https://github.com/Nigh/aprs-android). Receive location updates from your phone, filter journeys by date, review distance and recorded duration, and inspect tracks on an OSM map.
 
-## 用 Docker Compose 部署
+Each deployment has one account and supports up to 16 phone upload tokens. Go + SQLite + Svelte run as a single service, without a separate database server. The interface follows [xianii-theme](https://github.com/Nigh/xianii-theme) and uses the same OpenFreeMap dark map style as the Android app.
 
-需要 Git、Docker 和 Docker Compose v2。初次部署会从源码构建镜像。
+The web interface supports English and Simplified Chinese, with English as the default. Use the language selector at the top of the page; your choice is saved in this browser. Language does not change the deployment timezone or stored data.
+
+## Deploy with Docker Compose
+
+Requires Git, Docker, and Docker Compose v2. The first deployment builds the image from source.
 
 ```sh
 git clone https://github.com/Nigh/aprs-android-hook.git
@@ -15,19 +19,19 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-默认只在宿主机 `127.0.0.1:18080` 提供 HTTP 服务。浏览器打开 `http://localhost:18080`，创建唯一账户。密码至少12个字符，最多72字节。**先在本地注册，再开放公网访问**，首个注册者会成为唯一用户。
+By default, the HTTP service is available only at `127.0.0.1:18080` on the host. Open `http://localhost:18080` and create the only account. Passwords require at least 12 characters and at most 72 bytes. **Register locally before exposing the service publicly:** the first person to register becomes its only user.
 
-在远程服务器部署时，用 SSH 隧道打开本地注册页面：
+For a remote server, open the registration page through an SSH tunnel:
 
 ```sh
 ssh -L 18080:127.0.0.1:18080 user@your-server
 ```
 
-连接后在自己电脑打开 `http://localhost:18080`。不要执行 `docker compose down -v`，它会删除包含账户和轨迹的数据卷。
+Then open `http://localhost:18080` on your own computer. Do not run `docker compose down -v`; it deletes the volume containing your account and tracks.
 
-### 修改端口和时区
+### Change the port and timezone
 
-编辑 `.env`，然后执行 `docker compose up -d`：
+Edit `.env`, then run `docker compose up -d`:
 
 ```dotenv
 PORT=18081
@@ -36,19 +40,19 @@ TZ=Asia/Shanghai
 PUBLIC_URL=
 ```
 
-`PORT` 是宿主机端口，容器内始终为8080。`TZ` 控制日期筛选和界面时间；可改成其他 IANA 时区。默认绑定回环地址，配合宿主机 Caddy 使用。
+`PORT` is the host port; the container always uses port 8080. `TZ` controls date filters and displayed timestamps and accepts IANA timezone names. The default loopback binding works with Caddy on the host.
 
-## 用 Caddy 提供 HTTPS
+## Provide HTTPS with Caddy
 
-Android 只接受 HTTPS webhook 地址。先将域名 DNS 指向服务器，确保 Caddy 可以使用公网80和443端口；完成本地账户注册后，在 `.env` 设置：
+Android accepts only HTTPS webhook URLs. Point your domain's DNS at the server and make ports 80 and 443 available to Caddy. After registering locally, set this in `.env`:
 
 ```dotenv
 PUBLIC_URL=https://tracks.example.com
 ```
 
-`PUBLIC_URL` 必须是浏览器访问的完整源地址，不能包含路径。它用于同源校验及 Secure 登录 Cookie；不要仅修改反代地址而忘记这个配置。
+`PUBLIC_URL` must match the browser's complete origin and must not include a path. It controls same-origin checks and Secure login cookies; update it when changing the external address.
 
-宿主机 Caddy 的 Caddyfile：
+For Caddy running on the host, use this Caddyfile:
 
 ```caddyfile
 tracks.example.com {
@@ -56,7 +60,7 @@ tracks.example.com {
 }
 ```
 
-如果修改了 `PORT`，同步修改反代端口。应用与 Caddy 配置生效：
+If you changed `PORT`, update the upstream port too. Apply both configurations:
 
 ```sh
 docker compose up -d
@@ -64,24 +68,24 @@ sudo caddy validate --config /etc/caddy/Caddyfile
 sudo systemctl reload caddy
 ```
 
-随后打开 `https://tracks.example.com` 登录。整个站点反代到应用，包括 `/api/webhook`，不要增加尾斜杠重定向。应用不信任任意客户端发送的代理头，以 `PUBLIC_URL` 判断外部地址。HTTP 到 HTTPS 的跳转由 Caddy 负责。[Caddy 反代文档](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
+Sign in at `https://tracks.example.com`. Proxy the entire site, including `/api/webhook`, to the app. Do not add trailing-slash redirects. The app uses `PUBLIC_URL` to identify its external origin rather than trusting arbitrary client-supplied proxy headers. Caddy handles HTTP-to-HTTPS redirects. [Caddy reverse proxy documentation](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
 
-### Caddy 也运行在容器内
+### Caddy running in a container
 
-Caddy 容器中的 `127.0.0.1` 指向 Caddy 自身。让现有 Caddy 容器加入应用的 Compose 网络，通过服务名连接即可，不需要把 Caddy 加入本项目。
+Inside a Caddy container, `127.0.0.1` refers to Caddy itself. Connect your existing Caddy container to the app's Compose network and use its service name. Caddy does not need to be added to this project's Compose file.
 
-默认网络名为 `aprs-android-hook_default`（更改 Compose 项目名时也会改变）：
+The default network is `aprs-android-hook_default`; a custom Compose project name changes it:
 
 ```sh
 docker network connect aprs-android-hook_default your-caddy-container
 ```
 
-此时 Caddyfile 中使用 `reverse_proxy app:8080`。为避免 Caddy 重建后丢失网络连接，在它自己的 Compose 配置中声明这个外部网络，并加入 Caddy 服务的 `networks`：
+Use `reverse_proxy app:8080` in the Caddyfile. To keep the connection after Caddy is recreated, declare the external network in Caddy's own Compose configuration:
 
 ```yaml
 services:
   caddy:
-    # 保留已有 image、ports、volumes 等配置
+    # Keep your existing image, ports, volumes, and other configuration.
     networks:
       - default
       - aprs
@@ -91,52 +95,52 @@ networks:
     name: aprs-android-hook_default
 ```
 
-不要为解决容器互通而直接将应用端口开放到公网。
+Do not expose the app's port publicly just to connect the containers.
 
-## 连接 aprs-android
+## Connect aprs-android
 
-1. 在手机 aprs-android 打开 **Settings → Webhook**，选择 **Copy token**。token 由手机生成，更新应用时保持不变，直到主动刷新。
-2. 登录网页，进入 **上传设置**，粘贴手机 token，填写便于辨认的备注并登记。
-3. 在手机启用 **Enable webhook**，填写：
-   - **Webhook HTTPS URL**：`https://tracks.example.com/api/webhook`
-   - **Webhook reporting ID**：一个用于区分记录的名称，例如 `my-phone`；它不是网页登录用户名。
-4. 手机获取并上报可靠定位后，在操作日志中检查 **Webhook HTTP 200**。
-5. 打开网页 **路径记录**，选择日期，点击 **查看路径**。可按上报 ID 和设备筛选，点击路径查看地图及定位点详情。
+1. On your phone, open **Settings → Webhook** in aprs-android and select **Copy token**. The phone generates the token; it survives app updates until you explicitly refresh it.
+2. Sign in to the web app, open **Upload settings**, paste the phone token, and optionally add a note.
+3. On your phone, turn on **Enable webhook** and enter:
+   - **Webhook HTTPS URL**: `https://tracks.example.com/api/webhook`
+   - **Webhook reporting ID**: a name such as `my-phone` to identify your records. This is separate from your web login username.
+4. After the phone obtains and reports a reliable location, check its operation log for **Webhook HTTP 200**.
+5. In the web app, open **Track history**, select the dates, and click **Show tracks**. Filter by reporting ID or device, then select a track to see the map and location details.
 
-手机的 webhook 在 APRS 被停止区域等规则阻止时仍可能上传定位。服务端只记录实际收到的数据；它不能恢复网络失败时未上传的点。
+The phone may still upload webhook locations when stop zones or other rules block APRS transmission. The server records only the points it receives; it cannot recover points that were never uploaded because of network failures.
 
-刷新手机 token 后，旧 token 不会自动更新：在网页删除旧记录并登记新 token。删除 token 立即禁止后续上传，保留已有轨迹。服务端只存 token 哈希，不能取回完整值。
+Refreshing a phone token does not update the server automatically. Delete the old entry and register the new token. Deletion immediately blocks subsequent uploads while keeping existing tracks. The server stores only a hash and cannot recover the full token.
 
-### 用 curl 检查上传
+### Check an upload with curl
 
-将 `TOKEN` 替换为手机复制且已登记的值。避免将真实 token 提交到仓库或贴入公开日志。
+Replace `TOKEN` with the phone token you have registered. Do not commit real tokens or post them in public logs.
 
 ```sh
-TOKEN='替换为手机上的64位token'
+TOKEN='replace-with-your-64-character-phone-token'
 curl --fail-with-body https://tracks.example.com/api/webhook \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   --data '{"id":"connection-test","device_hash":"0123456789abcdef","timestamp_ms":1767225600000,"latitude":31.2304,"longitude":121.4737,"accuracy_m":5,"speed_mps":null,"bearing_deg":null,"altitude_m":null}'
 ```
 
-成功返回 `{"ok":true}`。这个测试点在上海时区的2026年1月1日08:00，查询该日期即可看到；它会作为真实记录保留。重复发送同一 ID、设备、时间戳不会增加点数。
+A successful request returns `{"ok":true}`. This test point is at 08:00 on January 1, 2026 in the Shanghai timezone; select that date to see it. It remains in your location history. Repeating the same reporting ID, device, and timestamp does not add another point.
 
-## 路径与统计怎么算
+## Tracks and statistics
 
-- 同一上报 ID、同一设备的定位点按时间排序；相邻点间隔**超过30分钟**时断开。恰好30分钟仍属于同段。
-- 距离为每段相邻点之间的球面距离总和，不是道路导航距离。GPS 漂移可能增加距离，本期不自动过滤漂移。
-- 记录时长为每段最后点减去第一点，再求和；包含段内停留，不含超过30分钟的断档，也不是实际运动时间。
-- 单点路径的距离和时长均为零。不同设备或上报 ID 不连接；更换 token 本身不拆分路径。
-- 日期段包含结束日期全天，按页面显示的部署时区解释。统计和地图只使用选定日期范围内的点；跨日路径在筛选范围边界裁剪。
-- 列表每页50条，汇总统计覆盖整个筛选结果。乱序到达的点会在下次查询时重新参与分段，因此路径可能变化。
+- Points are sorted by time within each reporting ID and device. A gap **over 30 minutes** starts a new segment; exactly 30 minutes remains in the same segment.
+- Distance is the sum of spherical distances between consecutive points in each segment, not a road-navigation distance. GPS drift can increase the result; this version does not automatically filter it.
+- Recorded duration is the sum of each segment's last timestamp minus its first timestamp. It includes stops within a segment and excludes gaps over 30 minutes. It is not actual movement time.
+- A single-point track has zero distance and duration. Different reporting IDs or devices are never connected; changing a token alone does not split a track.
+- Date ranges include the entire end date in the displayed deployment timezone. Statistics and maps use only points inside the selected range; tracks crossing the boundary are clipped.
+- Lists contain 50 tracks per page; totals cover the entire filter result. Out-of-order uploads are included the next time you query, so segment boundaries can change.
 
-地图由 [OpenFreeMap](https://openfreemap.org/) 提供，使用 OpenStreetMap 数据。浏览器需要能访问地图服务并支持 WebGL；地图加载失败不会阻止查看路径列表和统计。PWA 只缓存界面静态资源，离线时不能查询私有轨迹。
+Maps are provided by [OpenFreeMap](https://openfreemap.org/) using OpenStreetMap data. Your browser needs network access to the map service and WebGL support. Map failures do not prevent browsing the list and statistics. The PWA caches only the static app shell; private tracks cannot be queried offline. The installed PWA name and description use English; its interface follows your saved language choice.
 
-## 数据备份、恢复和升级
+## Back up, restore, and upgrade
 
-SQLite 数据保存在 Compose 的 `data` 卷中，包含唯一账户、登录会话、token 哈希和全部定位点。备份应保存在可信位置。
+The Compose `data` volume contains the SQLite database: your account, sessions, token hashes, and all location points. Keep backups in a trusted place.
 
-停止应用后打包数据卷，保证数据库及 WAL 一致：
+Stop the app before archiving the entire volume so the database and WAL remain consistent:
 
 ```sh
 docker compose stop app
@@ -144,7 +148,7 @@ docker compose run --rm --no-deps --user 0 --entrypoint tar app -C /data -czf - 
 docker compose start app
 ```
 
-恢复到同一部署或已经创建数据卷的新部署（先停止应用，恢复会覆盖同名文件）：
+Restore to the same deployment or a new deployment with its data volume already created. Stop the app first; restoration overwrites files with matching names:
 
 ```sh
 docker compose stop app
@@ -154,9 +158,9 @@ docker compose run --rm --no-deps --user 0 --entrypoint chown app -R 65532:65532
 docker compose start app
 ```
 
-删除数据库前先确认备份可用。以上二进制重定向示例面向 Linux/macOS shell；Windows 使用 WSL，避免旧版 PowerShell 改写压缩文件字节。
+Confirm your backup is usable before deleting the database. These binary-redirection examples target Linux/macOS shells. On Windows, use WSL to avoid older PowerShell versions modifying archive bytes.
 
-升级前备份，再执行：
+Back up before upgrading, then run:
 
 ```sh
 git pull --ff-only
@@ -164,26 +168,26 @@ docker compose up -d --build
 docker compose ps
 ```
 
-本期没有密码找回功能，请妥善保存密码和数据库备份。
+There is no password recovery feature in this version. Keep your password and database backups safe.
 
-## 常见问题
+## Troubleshooting
 
-| 现象 | 检查 |
+| Symptom | Check |
 | --- | --- |
-| 手机 HTTP 401 | token 是否已登记、是否刷新过；复制时是否完整 |
-| 手机 HTTP 400 | 定位字段或时间是否有效；测试 JSON 是否完整 |
-| 页面 HTTP 403 | `.env` 的 `PUBLIC_URL` 是否与浏览器地址一致，包括协议和端口 |
-| 登录后仍显示登录页 | 是否在 HTTP 地址使用了配置为 HTTPS 的服务；应通过 Caddy 的 HTTPS 地址访问 |
-| 没有路径 | 日期、部署时区、ID/设备筛选，以及手机是否收到 HTTP 200 |
-| token 显示“尚未上传” | 是否在手机启用 webhook、填写正确地址并得到可靠定位 |
-| 地图不显示 | 到 OpenFreeMap 的网络连接、WebGL 和浏览器控制台 |
-| 端口占用 | 修改 `.env` 的 `PORT`，并同步修改 Caddy 上游 |
+| Phone HTTP 401 | Was the complete token registered? Has the phone refreshed it? |
+| Phone HTTP 400 | Are location fields and timestamps valid? Is the test JSON complete? |
+| Web HTTP 403 | Does `PUBLIC_URL` match the browser origin, including scheme and port? |
+| Signing in returns to the login page | Use Caddy's HTTPS URL when the service is configured for HTTPS. |
+| No tracks | Check dates, deployment timezone, ID/device filters, and the phone's HTTP 200 log. |
+| A token shows “No uploads yet” | Enable the phone webhook, set the correct URL, and obtain a reliable location. |
+| Map does not appear | Check OpenFreeMap connectivity, WebGL, and the browser console. |
+| Port is occupied | Change `PORT` and the Caddy upstream port together. |
 
-查看服务状态和日志：`docker compose ps`、`docker compose logs --tail=100 app`。日志不记录上传 token 或定位请求正文。
+Inspect status and logs with `docker compose ps` and `docker compose logs --tail=100 app`. Logs do not contain upload tokens or location request bodies.
 
-## 本地开发
+## Local development
 
-需要 Go 1.26.4+、Node.js 22.19+ 和 Corepack。
+Requires Go 1.26.4+, Node.js 22.19+, and Corepack.
 
 ```sh
 cd web
@@ -198,10 +202,18 @@ go test ./...
 go run .
 ```
 
-打开 `http://localhost:8080`。前端热更新：在另一个终端进入 `web` 执行 `yarn dev`，同时将 Go 服务的 `PUBLIC_URL` 配置为 `http://localhost:5173`；Vite 将 `/api` 代理到8080。
+Open `http://localhost:8080`. For frontend hot reload, run `yarn dev` in `web` from another terminal and configure the Go service with `PUBLIC_URL=http://localhost:5173`; Vite proxies `/api` to port 8080.
 
-支持环境变量：`LISTEN_ADDR`（默认 `:8080`）、`DB_PATH`（默认 `data/aprs.sqlite`）、`WEB_DIR`（默认 `web/build`）、`TZ`、`PUBLIC_URL`。Docker 使用固定容器端口，通过 Compose 修改宿主机端口。
+Environment variables: `LISTEN_ADDR` (default `:8080`), `DB_PATH` (default `data/aprs.sqlite`), `WEB_DIR` (default `web/build`), `TZ`, and `PUBLIC_URL`. Docker keeps its container port fixed; use Compose to change the host port.
 
-## 许可证与来源
+### Add another UI language
 
-MIT。前端基于 [svelte-static-pwa-template](https://github.com/Nigh/svelte-static-pwa-template)，保留其 [MIT 许可证](web/LICENSE)。设计 tokens 使用 [xianii-theme](https://github.com/Nigh/xianii-theme)；地图保留 OpenFreeMap / OpenMapTiles / OpenStreetMap 署名。
+Add a JSON catalog under `web/src/lib/locales`, using the keys and named placeholders from `en.json`. Import it and add an entry `{ name, messages }` to the `locales` registry in `index.js`, with a BCP 47 language tag as its key. The selector reads that registry; there is no two-language flag or hardcoded language toggle.
+
+Messages can be strings or plural-form objects using native `Intl.PluralRules` categories, such as `one` and `other`. Missing messages fall back to English. Date and number formatting use `Intl`, while the deployment timezone remains independent. Tests check key coverage, placeholders, fallback behavior, pluralization, and registering a third language.
+
+API errors retain the existing `error` message and also provide a stable `code` translation key. The UI translates that code and uses a generic localized error for unknown codes.
+
+## License and credits
+
+MIT. The frontend is based on [svelte-static-pwa-template](https://github.com/Nigh/svelte-static-pwa-template), with its [MIT license](web/LICENSE) preserved. Theme tokens come from [xianii-theme](https://github.com/Nigh/xianii-theme). Map attribution for OpenFreeMap, OpenMapTiles, and OpenStreetMap is retained.

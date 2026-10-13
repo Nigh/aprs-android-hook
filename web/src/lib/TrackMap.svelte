@@ -1,9 +1,11 @@
 <script>
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
+	import { locale, t } from '$lib/i18n.js';
+	import { defaultLocale, locales, translate } from '$lib/locales/index.js';
 	import { formatTime } from './api.js';
 	import 'maplibre-gl/dist/maplibre-gl.css';
 	let { track = null, timezone = 'Asia/Shanghai' } = $props();
-	let container;
+	let container = $state();
 	let map = $state.raw(null);
 	let ready = $state(false);
 	let error = $state('');
@@ -31,7 +33,7 @@
 		const [r, g, b] = context.getImageData(0, 0, 1, 1).data;
 		return `rgb(${r},${g},${b})`;
 	}
-	async function initialize() {
+	async function initialize(language) {
 		const current = ++generation;
 		ready = false;
 		loading = true;
@@ -45,6 +47,11 @@
 			lib = await import('maplibre-gl');
 			if (disposed || current !== generation) return;
 			map = new lib.Map({
+				locale: Object.fromEntries(
+					Object.keys(locales[defaultLocale].messages)
+						.filter((key) => key.startsWith('maplibre.'))
+						.map((key) => [key.slice('maplibre.'.length), translate(language, key)])
+				),
 				container,
 				style: 'https://tiles.openfreemap.org/styles/dark',
 				center: [105, 35],
@@ -55,7 +62,7 @@
 			map.addControl(new lib.ScaleControl({ unit: 'metric' }));
 			map.on('error', () => {
 				if (current !== generation) return;
-				error = '地图资源加载失败，请检查网络后重试。路径与统计仍可查看。';
+				error = 'error.mapResources';
 				loading = false;
 			});
 			map.on('load', () => {
@@ -91,12 +98,12 @@
 					const content = document.createElement('div');
 					content.className = 'point-popup';
 					const lines = [
-						formatTime(point.timestamp_ms, timezone),
+						formatTime(point.timestamp_ms, timezone, $locale),
 						`${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)}`,
-						`精度：${point.accuracy_m == null ? '未知' : `${point.accuracy_m} m`}`,
-						`速度：${point.speed_mps == null ? '未知' : `${point.speed_mps} m/s`}`,
-						`海拔：${point.altitude_m == null ? '未知' : `${point.altitude_m} m`}`,
-						`方向：${point.bearing_deg == null ? '未知' : `${point.bearing_deg}°`}`
+						`${$t('point.accuracy')}: ${point.accuracy_m == null ? $t('point.unknown') : `${point.accuracy_m} m`}`,
+						`${$t('point.speed')}: ${point.speed_mps == null ? $t('point.unknown') : `${point.speed_mps} m/s`}`,
+						`${$t('point.altitude')}: ${point.altitude_m == null ? $t('point.unknown') : `${point.altitude_m} m`}`,
+						`${$t('point.bearing')}: ${point.bearing_deg == null ? $t('point.unknown') : `${point.bearing_deg}°`}`
 					];
 					lines.forEach((line) => {
 						const item = document.createElement('div');
@@ -114,17 +121,16 @@
 			timeout = setTimeout(() => {
 				if (!ready) {
 					loading = false;
-					error = '地图加载超时，请检查网络后重试。';
+					error = 'error.mapTimeout';
 				}
 			}, 15000);
 		} catch {
 			if (disposed || current !== generation) return;
 			loading = false;
-			error = '当前浏览器无法加载地图，请尝试支持 WebGL 的浏览器。';
+			error = 'error.mapBrowser';
 		}
 	}
 	onMount(() => {
-		initialize();
 		const observer = new window.ResizeObserver(() => {
 			map?.resize();
 			fitTrack();
@@ -138,6 +144,10 @@
 			markers.forEach((marker) => marker.remove());
 			map?.remove();
 		};
+	});
+	$effect(() => {
+		const language = $locale;
+		if (container) untrack(() => initialize(language));
 	});
 	$effect(() => {
 		if (!ready || !map) return;
@@ -164,17 +174,19 @@
 			.forEach((index) => {
 				const element = document.createElement('div');
 				element.className = `endpoint ${index === 0 ? 'start' : 'end'}`;
-				element.textContent = index === 0 ? '起' : '终';
-				element.setAttribute('aria-label', index === 0 ? '路径起点' : '路径终点');
+				element.textContent = index === 0 ? $t('map.startShort') : $t('map.endShort');
+				element.setAttribute('aria-label', index === 0 ? $t('map.start') : $t('map.end'));
 				markers.push(new lib.Marker({ element }).setLngLat(coordinates[index]).addTo(map));
 			});
 	});
 </script>
 
 <div class="map-shell">
-	<div class="map-canvas" bind:this={container} aria-label="路径地图"></div>
-	{#if loading}<div class="map-notice" role="status">正在加载地图…</div>{/if}
+	<div class="map-canvas" bind:this={container} aria-label={$t('map.title')}></div>
+	{#if loading}<div class="map-notice" role="status">{$t('map.loading')}</div>{/if}
 	{#if error}<div class="map-notice map-error" role="status">
-			<span>{error}</span><button class="btn btn-sm" onclick={initialize}>重试地图</button>
+			<span>{$t(error)}</span><button class="btn btn-sm" onclick={() => initialize($locale)}
+				>{$t('map.retry')}</button
+			>
 		</div>{/if}
 </div>

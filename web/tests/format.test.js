@@ -10,6 +10,9 @@ test('date presets cross month and year boundaries without local timezone shifts
 test('track formatting uses recorded duration and deployment timezone', () => {
 	assert.equal(formatDistance(0), '0 m');
 	assert.equal(formatDistance(1234), '1.23 km');
-	assert.equal(formatDuration(3600000), '1 小时 0 分');
+	assert.equal(formatDuration(3600000), '1 hr 0 min');
+	assert.equal(formatDuration(3600000, 'zh-CN'), '1 小时 0 分');
 	assert.match(formatTime(1767225600000, 'Asia/Shanghai'), /08:00/);
+	assert.match(formatTime(1767196800000, 'Asia/Shanghai', 'en'), /00:00/);
+	assert.match(formatTime(1767196800000, 'Asia/Shanghai', 'zh-CN'), /00:00/);
 });

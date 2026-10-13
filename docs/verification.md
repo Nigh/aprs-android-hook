@@ -12,3 +12,11 @@
 复现自动检查：在根目录执行 `go test .` 和 `go vet .`；在 `web` 执行 `yarn install --immutable`、`yarn check`、`yarn lint`、`yarn test`、`yarn build`。CI 另外执行 Go race 检查。
 
 尚未验证真实 Android 到公网服务器的端到端连接及公网 ACME 证书签发。上线后按 README 的手机配对流程检查 `Webhook HTTP 200`。
+
+## 2026-10-13 · UI internationalization
+
+- English-default UI and README, with a complete Simplified Chinese catalog and linked Chinese README.
+- Locale switching and persistence after reload verified in the browser, including document language/title, existing error messages, token feedback, recorded duration, and native MapLibre controls.
+- English/Chinese desktop and mobile layouts checked with synthetic track data. No horizontal overflow in the mobile layouts.
+- Tests cover catalog key/placeholder parity, English fallback, registering additional languages, native plural rules, locale-aware time formatting at midnight, and stable API error codes preserving the legacy message field.
+- Go tests/race and frontend check/lint/test/build pass. No dependencies or database migrations added.

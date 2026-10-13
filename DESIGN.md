@@ -1,5 +1,5 @@
 ---
-name: APRS 轨迹
+name: APRS Tracks
 description: Xianii dark interface for privately inspecting GPS journeys.
 colors:
   primary: "oklch(81% 0.117 11.638)"
@@ -84,20 +84,20 @@ components:
     rounded: "{rounded.selector}"
 ---
 
-# Design System: APRS 轨迹
+# Design System: APRS Tracks
 
 ## Overview
 
 **Creative North Star: "Xianii private track workspace"**
 
-The established [Nigh/xianii-theme](https://github.com/Nigh/xianii-theme) world is authoritative. The shipped Chinese interface uses `data-theme="xianii"` and the installed `@xianii/design-system/theme.css` entry, which combines the Tailwind and daisyUI adapters. These extracted values describe the current dark theme; upstream CSS custom properties remain the runtime source of truth.
+The established [Nigh/xianii-theme](https://github.com/Nigh/xianii-theme) world is authoritative. The English-default interface, with Simplified Chinese available, uses `data-theme="xianii"` and the installed `@xianii/design-system/theme.css` entry, which combines the Tailwind and daisyUI adapters. These extracted values describe the current dark theme; upstream CSS custom properties remain the runtime source of truth.
 
 The interface is compact and operational: dated journeys, measurements, and a dark map share one workspace. Implement directly in code and inspect the rendered result. The app mark is a geometric SVG; no generated raster assets or visual comp are required.
 
 **Key Characteristics:**
 - Dark neutral surfaces with restrained pink selection and teal map points.
 - Flat filters and inline totals above divided list and map regions.
-- Chinese labels, readable measurements, and explicit interaction states.
+- English and Simplified Chinese labels, readable measurements, and explicit interaction states.
 
 ## Colors
 
@@ -129,7 +129,7 @@ Summary totals use `--font-size-xl`, reducing to `--font-size-lg` on mobile. Mea
 
 ## Layout
 
-The app shell is capped at 1600px with centered margins and 2rem horizontal padding. A compact header and underlined tabs precede the filter form and flat, wrapping summary. Desktop filters use six columns (`1fr 1.15fr 1.15fr 1fr 1.2fr auto`) with 1rem gaps. The bordered workspace pairs a 280–340px list with a flexible map; list rows scroll at 530px and the map height is `clamp(420px, 58vh, 640px)`.
+The app shell is capped at 1600px with centered margins and 2rem horizontal padding. A right-aligned native language select occupies a 4rem top toolbar on authentication and workspace screens; its width is 9rem. A compact header and underlined tabs precede the filter form and flat, wrapping summary. Desktop filters use six columns (`1fr 1.15fr 1.15fr 1fr 1.2fr auto`) with 1rem gaps. The bordered workspace pairs a 280–340px list with a flexible map; list rows scroll at 530px and the map height is `clamp(420px, 58vh, 640px)`.
 
 At **1100px and below**, filters become three equal columns and summary gaps narrow. At **760px and below**, shell padding becomes 1rem, filters become two columns, summary guidance occupies its own line, and list then map stack vertically. The list scroll area is 280px and map height is 420px. Token creation stacks into one column; each token's note editor moves below its identity and delete action. The token page is capped at 1000px; authentication is centered within a 26rem panel.
 
@@ -139,11 +139,12 @@ Page regions are flat, separated by borders and tonal surfaces. Preserve daisyUI
 
 ## Shapes
 
-Selectors, fields, and containers use the upstream radius tokens, all currently gently rounded. Workspace overflow clips its internal list/map regions to the box radius. Borders use base-300. Endpoint markers are circles (28px) with a 2px base-100 border and explicit 起 / 终 labels. The line uses rounded joins and caps (4px); map point circles use a 4px radius.
+Selectors, fields, and containers use the upstream radius tokens, all currently gently rounded. Workspace overflow clips its internal list/map regions to the box radius. Borders use base-300. Endpoint markers are circles (28px) with a 2px base-100 border and localized start/end labels (S / E in English; 起 / 终 in Simplified Chinese). The line uses rounded joins and caps (4px); map point circles use a 4px radius.
 
 ## Components
 
 - **Buttons:** daisyUI primary, default, small ghost, and error variants; app buttons use theme medium weight. Disabled and busy states remain native. Keep the adapter's hover/press behavior.
+- **Language:** English (`en`) is the default; Simplified Chinese (`zh-CN`) is available through the native labelled select. Options use each locale’s own name from the extensible registry in `web/src/lib/locales/index.js`. Keyed per-language JSON catalogs drive reactive copy, document title/description, `html lang`, aria labels, map endpoints, popup labels, and MapLibre controls. The `aprs-language` browser-local preference is independent of deployment timezone; dates still use the server’s timezone.
 - **Fields:** real labels wrap native inputs and selects. Date inputs retain native date interaction; token input is password-masked. Field label/help spacing uses the upstream spacing properties.
 - **Navigation:** tabs use a base-300 divider, muted resting labels, hover wash, and primary text plus a 2px selected underline. `aria-selected`, linked tab panels, roving tabindex, arrows, Home, and End express state and keyboard navigation.
 - **Track rows:** full-width buttons with divided rows, wrapping measurements and monospace device hashes. Selected rows use the pink wash and primary ID, with `aria-pressed` exposing selection.
@@ -155,7 +156,7 @@ Selectors, fields, and containers use the upstream radius tokens, all currently 
 
 ### Do:
 - Do use the existing Xianii tokens and adapter components for every added surface.
-- Do preserve Chinese labels and the flat filter, summary, list/map hierarchy.
+- Do use keyed locale catalogs for English and Simplified Chinese labels and preserve the flat filter, summary, list/map hierarchy.
 - Do keep selected state, keyboard focus, labels, and destructive confirmation explicit.
 - Do inspect desktop, intermediate, and stacked mobile layouts after visual changes.
 

@@ -23,7 +23,11 @@ func respond(w http.ResponseWriter, status int, value any) {
 	_ = json.NewEncoder(w).Encode(value)
 }
 func fail(w http.ResponseWriter, status int, message string) {
-	respond(w, status, map[string]string{"error": message})
+	code := errorCodes[message]
+	if code == "" {
+		code = "error.requestFailed"
+	}
+	respond(w, status, map[string]string{"error": message, "code": code})
 }
 func decode(w http.ResponseWriter, r *http.Request, value any) bool {
 	if !strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "application/json") {
