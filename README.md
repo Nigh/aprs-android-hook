@@ -100,7 +100,7 @@ When using containerized Caddy as the only public entry point, keep `BIND_ADDRES
    - **Webhook HTTPS URL**: `https://tracks.example.com/api/webhook`
    - **Webhook reporting ID**: a name such as `my-phone` to identify your records. This is separate from your web login username.
 4. After the phone obtains and reports a reliable location, check its operation log for **Webhook HTTP 200**.
-5. In the web app, open **Track history**, select the dates, and click **Show tracks**. Filter by reporting ID or device, then select a track to see the map and location details.
+5. In the web app, open **Track history**, select the dates, and click **Show tracks**. Filter by reporting ID or device. The map shows every path in the range as a thin line and selects the most recently recorded track by default. Select another track from the list or by clicking its line to see its location details.
 
 The phone may still upload webhook locations when stop zones or other rules block APRS transmission. The server records only the points it receives; it cannot recover points that were never uploaded because of network failures.
 
@@ -157,7 +157,7 @@ Android must implement this protocol to upload successfully. Updating the server
 - Recorded duration is the sum of each session's last received timestamp minus its first received timestamp. It includes stops and gaps within a session, excludes intervals between sessions, and is not actual movement time or the exact duration between the user's start/stop actions.
 - A single-point track has zero distance and duration. Different reporting IDs or devices are never connected, even if they reuse a session ID. Reusing an ID for separate recordings on the same reporting ID/device merges them.
 - Date ranges include the entire end date in the displayed deployment timezone. Statistics and maps use only points inside the selected range; sessions crossing the boundary are clipped.
-- Lists contain 50 tracks per page; totals cover the entire filter result. Track summaries and details expose `session_id`. Track keys identify the reporting ID/device/session and stay stable across date clipping and late uploads, although points and statistics can change.
+- Lists contain 50 tracks per page; totals and the map cover the entire filter result. The initial map query also returns lightweight metadata for local pagination and coordinates for shared line layers. Track summaries and details expose `session_id`. Track keys identify the reporting ID/device/session and stay stable across date clipping and late uploads, although points and statistics can change.
 
 Maps are provided by [OpenFreeMap](https://openfreemap.org/) using OpenStreetMap data. Your browser needs network access to the map service and WebGL support. Map failures do not prevent browsing the list and statistics. The PWA caches only the static app shell; private tracks cannot be queried offline. The installed PWA name and description use English; its interface follows your saved language choice.
 

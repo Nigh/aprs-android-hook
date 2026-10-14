@@ -55,6 +55,11 @@ export function formatTime(ms, timezone, language = defaultLocale) {
 	}).format(ms);
 }
 
+export function formatMeasurement(value, unit, language = defaultLocale, unknown = '—') {
+	if (value == null) return unknown;
+	return `${new Intl.NumberFormat(language, { maximumFractionDigits: 2 }).format(value)}${unit === '°' ? '' : ' '}${unit}`;
+}
+
 export function shiftDate(date, days) {
 	const d = new Date(`${date}T12:00:00Z`);
 	d.setUTCDate(d.getUTCDate() + days);

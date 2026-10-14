@@ -1,7 +1,14 @@
 <script>
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { locale, t } from '$lib/i18n.js';
-	import { api, formatDistance, formatDuration, formatTime, shiftDate } from '$lib/api.js';
+	import {
+		api,
+		formatDistance,
+		formatDuration,
+		formatMeasurement,
+		formatTime,
+		shiftDate
+	} from '$lib/api.js';
 	import TrackMap from '$lib/TrackMap.svelte';
 	import Tokens from '$lib/Tokens.svelte';
 	let state = $state(null),
@@ -17,6 +24,7 @@
 		device = $state('');
 	let sources = $state([]),
 		data = $state(null),
+		paths = $state([]),
 		selected = $state(null),
 		selectedKey = $state('');
 	let detailLoading = $state(false),
@@ -26,6 +34,7 @@
 		requestVersion = 0,
 		detailVersion = 0;
 	let tabs = $state();
+	let trackRows = $state();
 	const ids = $derived([...new Set(sources.map((source) => source.id))]);
 	const devices = $derived([
 		...new Set(
@@ -47,6 +56,7 @@
 		detailVersion++;
 		state = state ? { ...state, authenticated: false } : null;
 		data = selected = null;
+		paths = [];
 		sources = [];
 		view = 'tracks';
 		error = 'error.sessionExpired';
@@ -98,7 +108,7 @@
 		to = value === 'yesterday' ? shiftDate(state.today, -1) : state.today;
 		from = shiftDate(state.today, -days[value]);
 	}
-	async function reload(nextPage = 1) {
+	async function reload() {
 		if (!from || !to || from > to) {
 			error = 'error.invalidRange';
 			return;
@@ -110,16 +120,15 @@
 		selected = null;
 		selectedKey = '';
 		data = null;
+		paths = [];
 		const query = new URLSearchParams({ from, to, id, device }).toString();
 		try {
-			const [result, available] = await Promise.all([
-				api(`tracks?${query}&page=${nextPage}`),
-				api('sources')
-			]);
+			const [result, available] = await Promise.all([api(`tracks?${query}&map=1`), api('sources')]);
 			if (version !== requestVersion) return;
 			data = result;
+			paths = result.paths || [];
 			sources = available;
-			page = nextPage;
+			page = 1;
 			applied = query;
 			if (data.tracks.length) await choose(data.tracks[0]);
 		} catch (e) {
@@ -127,6 +136,15 @@
 		} finally {
 			if (version === requestVersion) loading = false;
 		}
+	}
+	function changePage(nextPage) {
+		page = nextPage;
+		data = { ...data, tracks: data.all_tracks.slice((page - 1) * 50, page * 50) };
+	}
+	function choosePath(key, targetPage) {
+		choose({ key });
+		if (targetPage !== page) changePage(targetPage);
+		tick().then(() => trackRows?.querySelector('.selected')?.scrollIntoView({ block: 'nearest' }));
 	}
 	async function choose(track) {
 		const version = ++detailVersion;
@@ -367,13 +385,19 @@
 									>
 								</div>
 							{:else}
-								<div class="track-rows">
+								<div class="track-rows" bind:this={trackRows}>
 									{#each data.tracks as track (track.key)}<button
 											class="track-row"
 											class:selected={selectedKey === track.key}
 											aria-pressed={selectedKey === track.key}
 											onclick={() => choose(track)}
-											><span class="track-id">{track.id}</span><span class="muted small"
+											><span class="track-identity"
+												><span class="track-id">{track.id}</span><span
+													class="muted device-hash"
+													title={$t('device.label', { device: track.device_hash })}
+													>{$t('device.label', { device: track.device_hash })}</span
+												></span
+											><span class="muted small"
 												>{formatTime(track.start_ms, state.timezone, $locale)} — {formatTime(
 													track.end_ms,
 													state.timezone,
@@ -383,8 +407,6 @@
 												><span>{formatDistance(track.distance_m, $locale)}</span><span
 													>{formatDuration(track.duration_ms, $locale)}</span
 												><span>{$t('point.count', { count: track.point_count })}</span></span
-											><span class="muted small device-hash"
-												>{$t('device.label', { device: track.device_hash })}</span
 											></button
 										>{/each}
 								</div>
@@ -392,13 +414,13 @@
 									<button
 										class="btn btn-sm btn-ghost"
 										disabled={page <= 1 || loading}
-										onclick={() => reload(page - 1)}>{$t('tracks.previous')}</button
+										onclick={() => changePage(page - 1)}>{$t('tracks.previous')}</button
 									><span class="small"
 										>{page} / {Math.max(1, Math.ceil(data.summary.track_count / 50))}</span
 									><button
 										class="btn btn-sm btn-ghost"
 										disabled={page * 50 >= data.summary.track_count || loading}
-										onclick={() => reload(page + 1)}>{$t('tracks.next')}</button
+										onclick={() => changePage(page + 1)}>{$t('tracks.next')}</button
 									>
 								</div>
 							{/if}
@@ -414,7 +436,7 @@
 										: $t('tracks.select')}</span
 								>
 							</div>
-							<TrackMap track={selected} timezone={state.timezone} />
+							<TrackMap track={selected} {paths} onSelect={choosePath} timezone={state.timezone} />
 							{#if selected}<details class="point-details">
 									<summary>{$t('point.details', { count: selected.point_count })}</summary>
 									<div class="point-table-scroll">
@@ -431,10 +453,10 @@
 												>{#each selected.points as point (point.timestamp_ms)}<tr
 														><td>{formatTime(point.timestamp_ms, state.timezone, $locale)}</td><td
 															>{point.latitude.toFixed(6)} / {point.longitude.toFixed(6)}</td
-														><td>{point.accuracy_m == null ? '—' : `${point.accuracy_m} m`}</td><td
-															>{point.speed_mps == null ? '—' : `${point.speed_mps} m/s`}</td
-														><td>{point.altitude_m == null ? '—' : `${point.altitude_m} m`}</td><td
-															>{point.bearing_deg == null ? '—' : `${point.bearing_deg}°`}</td
+														><td>{formatMeasurement(point.accuracy_m, 'm', $locale)}</td><td
+															>{formatMeasurement(point.speed_mps, 'm/s', $locale)}</td
+														><td>{formatMeasurement(point.altitude_m, 'm', $locale)}</td><td
+															>{formatMeasurement(point.bearing_deg, '°', $locale)}</td
 														></tr
 													>{/each}</tbody
 											>

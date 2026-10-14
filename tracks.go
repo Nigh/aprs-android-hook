@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -42,6 +43,11 @@ type summary struct {
 	Distance float64 `json:"distance_m"`
 	Duration int64   `json:"duration_ms"`
 }
+type mapTrack struct {
+	Key         string       `json:"key"`
+	Page        int          `json:"page"`
+	Coordinates [][2]float64 `json:"coordinates"`
+}
 
 func distance(a, b point) float64 {
 	rad := math.Pi / 180
@@ -71,10 +77,10 @@ func groupTracks(points []point) ([]track, summary) {
 		current.Duration = current.End - current.Start
 	}
 	sort.Slice(tracks, func(i, j int) bool {
-		if tracks[i].Start == tracks[j].Start {
+		if tracks[i].End == tracks[j].End {
 			return tracks[i].Key < tracks[j].Key
 		}
-		return tracks[i].Start > tracks[j].Start
+		return tracks[i].End > tracks[j].End
 	})
 	total := summary{Tracks: len(tracks)}
 	for _, t := range tracks {
@@ -85,7 +91,7 @@ func groupTracks(points []point) ([]track, summary) {
 	return tracks, total
 }
 
-func (a *app) queryTracks(r *http.Request) ([]track, summary, error) {
+func (a *app) trackRange(r *http.Request) (time.Time, time.Time, error) {
 	q := r.URL.Query()
 	now := time.Now().In(a.location)
 	from := q.Get("from")
@@ -98,24 +104,27 @@ func (a *app) queryTracks(r *http.Request) ([]track, summary, error) {
 	}
 	start, err := time.ParseInLocation("2006-01-02", from, a.location)
 	if err != nil {
-		return nil, summary{}, fmt.Errorf("开始日期无效")
+		return time.Time{}, time.Time{}, fmt.Errorf("开始日期无效")
 	}
 	end, err := time.ParseInLocation("2006-01-02", to, a.location)
 	if err != nil || end.Before(start) {
-		return nil, summary{}, fmt.Errorf("结束日期不能早于开始日期")
+		return time.Time{}, time.Time{}, fmt.Errorf("结束日期不能早于开始日期")
 	}
-	rows, err := a.db.QueryContext(r.Context(), `SELECT reporting_id,device_hash,session_id,timestamp_ms,latitude,longitude,accuracy_m,speed_mps,bearing_deg,altitude_m FROM points
-WHERE timestamp_ms>=?1 AND timestamp_ms<?2 AND (?3='' OR reporting_id=?3) AND (?4='' OR device_hash=?4)
-ORDER BY reporting_id,device_hash,session_id,timestamp_ms`, start.UnixMilli(), end.AddDate(0, 0, 1).UnixMilli(), q.Get("id"), q.Get("device"))
-	if err != nil {
-		return nil, summary{}, err
-	}
+	return start, end.AddDate(0, 0, 1), nil
+}
+
+func scanTracks(rows *sql.Rows, withMetrics bool) ([]track, summary, error) {
 	defer rows.Close()
-	// shortcut: materialize points in the selected range; use streaming aggregation if very large histories make queries slow.
 	points := []point{}
 	for rows.Next() {
 		p := point{Type: "location"}
-		if err := rows.Scan(&p.ID, &p.Device, &p.Session, &p.Time, &p.Lat, &p.Lon, &p.Accuracy, &p.Speed, &p.Bearing, &p.Altitude); err != nil {
+		var err error
+		if withMetrics {
+			err = rows.Scan(&p.ID, &p.Device, &p.Session, &p.Time, &p.Lat, &p.Lon, &p.Accuracy, &p.Speed, &p.Bearing, &p.Altitude)
+		} else {
+			err = rows.Scan(&p.ID, &p.Device, &p.Session, &p.Time, &p.Lat, &p.Lon)
+		}
+		if err != nil {
 			return nil, summary{}, err
 		}
 		points = append(points, p)
@@ -125,6 +134,21 @@ ORDER BY reporting_id,device_hash,session_id,timestamp_ms`, start.UnixMilli(), e
 	}
 	tracks, total := groupTracks(points)
 	return tracks, total, nil
+}
+
+func (a *app) queryTracks(r *http.Request) ([]track, summary, error) {
+	start, end, err := a.trackRange(r)
+	if err != nil {
+		return nil, summary{}, err
+	}
+	q := r.URL.Query()
+	rows, err := a.db.QueryContext(r.Context(), `SELECT reporting_id,device_hash,session_id,timestamp_ms,latitude,longitude FROM points
+WHERE timestamp_ms>=?1 AND timestamp_ms<?2 AND (?3='' OR reporting_id=?3) AND (?4='' OR device_hash=?4)
+ORDER BY reporting_id,device_hash,session_id,timestamp_ms`, start.UnixMilli(), end.UnixMilli(), q.Get("id"), q.Get("device"))
+	if err != nil {
+		return nil, summary{}, err
+	}
+	return scanTracks(rows, false)
 }
 
 func (a *app) tracks(w http.ResponseWriter, r *http.Request) {
@@ -144,22 +168,59 @@ func (a *app) tracks(w http.ResponseWriter, r *http.Request) {
 	start := min((page-1)*50, len(tracks))
 	end := min(start+50, len(tracks))
 	items := tracks[start:end]
-	for i := range items {
-		items[i].Points = nil
+	var paths []mapTrack
+	var allTracks []track
+	if r.URL.Query().Get("map") == "1" {
+		paths = make([]mapTrack, 0, len(tracks))
+		for i, t := range tracks {
+			if len(t.Points) < 2 {
+				continue
+			}
+			path := mapTrack{Key: t.Key, Page: i/50 + 1, Coordinates: make([][2]float64, len(t.Points))}
+			for j, p := range t.Points {
+				path.Coordinates[j] = [2]float64{*p.Lon, *p.Lat}
+			}
+			paths = append(paths, path)
+		}
+		allTracks = tracks
 	}
-	respond(w, 200, map[string]any{"tracks": items, "summary": total, "page": page, "page_size": 50, "timezone": a.location.String()})
+	for i := range tracks {
+		tracks[i].Points = nil
+	}
+	respond(w, 200, map[string]any{"tracks": items, "all_tracks": allTracks, "paths": paths, "summary": total, "page": page, "page_size": 50, "timezone": a.location.String()})
 }
 func (a *app) trackDetail(w http.ResponseWriter, r *http.Request) {
-	tracks, _, err := a.queryTracks(r)
+	start, end, err := a.trackRange(r)
 	if err != nil {
 		fail(w, 400, err.Error())
 		return
 	}
-	for _, t := range tracks {
-		if t.Key == r.PathValue("key") {
-			respond(w, 200, t)
-			return
-		}
+	key, err := base64.RawURLEncoding.DecodeString(r.PathValue("key"))
+	var parts []string
+	if err != nil || json.Unmarshal(key, &parts) != nil || len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
+		fail(w, 404, "路径已变化，请刷新列表")
+		return
+	}
+	q := r.URL.Query()
+	if (q.Get("id") != "" && q.Get("id") != parts[0]) || (q.Get("device") != "" && q.Get("device") != parts[1]) {
+		fail(w, 404, "路径已变化，请刷新列表")
+		return
+	}
+	rows, err := a.db.QueryContext(r.Context(), `SELECT reporting_id,device_hash,session_id,timestamp_ms,latitude,longitude,accuracy_m,speed_mps,bearing_deg,altitude_m FROM points
+WHERE reporting_id=?1 AND device_hash=?2 AND session_id=?3 AND timestamp_ms>=?4 AND timestamp_ms<?5
+ORDER BY timestamp_ms`, parts[0], parts[1], parts[2], start.UnixMilli(), end.UnixMilli())
+	if err != nil {
+		fail(w, 500, "无法读取路径")
+		return
+	}
+	tracks, _, err := scanTracks(rows, true)
+	if err != nil {
+		fail(w, 500, "无法读取路径")
+		return
+	}
+	if len(tracks) == 1 && tracks[0].Key == r.PathValue("key") {
+		respond(w, 200, tracks[0])
+		return
 	}
 	fail(w, 404, "路径已变化，请刷新列表")
 }

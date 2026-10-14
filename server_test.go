@@ -325,6 +325,18 @@ func TestTrackSessionsAndDistance(t *testing.T) {
 		t.Fatal("antimeridian distance", d)
 	}
 }
+func TestNewestTrackUsesLastRecordedPoint(t *testing.T) {
+	points := []point{
+		pointAt("a", "d", 1, 0, 0),
+		pointAt("a", "d", 30, 0, 1),
+		pointAt("b", "d", 20, 0, 0),
+		pointAt("b", "d", 25, 0, 1),
+	}
+	tracks, _ := groupTracks(points)
+	if tracks[0].ID != "a" || tracks[0].End != 30 {
+		t.Fatalf("latest recorded track: %+v", tracks)
+	}
+}
 
 func TestWebhookPacketTypes(t *testing.T) {
 	a := testApp(t)
@@ -416,16 +428,24 @@ func TestWebhookSessions(t *testing.T) {
 	}
 	query := "?from=2026-01-02&to=2026-01-02&id=record&device=1234567890abcdef"
 	var result struct {
-		Tracks  []track `json:"tracks"`
-		Summary summary `json:"summary"`
+		Tracks    []track    `json:"tracks"`
+		AllTracks []track    `json:"all_tracks"`
+		Paths     []mapTrack `json:"paths"`
+		Summary   summary    `json:"summary"`
 	}
-	w := request(a, "GET", "/api/tracks"+query, "", cookie, "")
+	w := request(a, "GET", "/api/tracks"+query+"&map=1", "", cookie, "")
 	expect(t, w, 200)
 	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
 	if result.Summary.Points != 4 || result.Summary.Tracks != 2 || result.Summary.Duration != 130*60000 || math.Abs(result.Summary.Distance-2*111195.0802) > 0.1 {
 		t.Fatalf("clipped sessions: %+v", result)
+	}
+	if len(result.Paths) != 2 || result.Paths[0].Page != 1 || len(result.Paths[0].Coordinates) != 2 || result.Paths[0].Key != result.Tracks[0].Key {
+		t.Fatalf("map paths should cover range in list order: %+v", result.Paths)
+	}
+	if len(result.AllTracks) != 2 || len(result.AllTracks[0].Points) != 0 {
+		t.Fatalf("map response should include lightweight list metadata: %+v", result.AllTracks)
 	}
 	keys := map[string]string{}
 	for _, tr := range result.Tracks {
@@ -445,6 +465,7 @@ func TestWebhookSessions(t *testing.T) {
 			}
 		}
 	}
+	expect(t, request(a, "GET", "/api/tracks/"+result.Tracks[0].Key+"?from=2026-01-01&to=2026-01-02&id=other", "", cookie, ""), 404)
 	if keys[testSession] == keys[otherSession] {
 		t.Fatal("equal-timestamp sessions share a key")
 	}
@@ -478,8 +499,9 @@ func TestDateFilteringPaginationAndDetail(t *testing.T) {
 	w := request(a, "GET", "/api/tracks"+query, "", cookie, "")
 	expect(t, w, 200)
 	var result struct {
-		Tracks  []track `json:"tracks"`
-		Summary summary `json:"summary"`
+		Tracks    []track `json:"tracks"`
+		AllTracks []track `json:"all_tracks"`
+		Summary   summary `json:"summary"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
@@ -503,10 +525,10 @@ func TestDateFilteringPaginationAndDetail(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	w = request(a, "GET", "/api/tracks?from=2026-01-01&to=2026-01-03&id=many&page=2", "", cookie, "")
+	w = request(a, "GET", "/api/tracks?from=2026-01-01&to=2026-01-03&id=many&page=2&map=1", "", cookie, "")
 	expect(t, w, 200)
 	_ = json.Unmarshal(w.Body.Bytes(), &result)
-	if result.Summary.Tracks != 55 || len(result.Tracks) != 5 {
-		t.Fatal("pagination totals", result.Summary, len(result.Tracks))
+	if result.Summary.Tracks != 55 || len(result.Tracks) != 5 || len(result.AllTracks) != 55 {
+		t.Fatal("pagination totals", result.Summary, len(result.Tracks), len(result.AllTracks))
 	}
 }
