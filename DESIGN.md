@@ -74,7 +74,7 @@ components:
     padding: "0.75rem 0.25rem"
   track-selected:
     backgroundColor: "{colors.interactive-active}"
-    padding: "1.1rem 1.25rem"
+    padding: "0.625rem 1rem"
   workspace:
     backgroundColor: "{colors.base-100}"
     rounded: "{rounded.box}"
@@ -95,7 +95,7 @@ The established [Nigh/xianii-theme](https://github.com/Nigh/xianii-theme) world 
 The interface is compact and operational: dated journeys, measurements, and a dark map share one workspace. Implement directly in code and inspect the rendered result. The app mark is a geometric SVG; no generated raster assets or visual comp are required.
 
 **Key Characteristics:**
-- Dark neutral surfaces with restrained pink selection and teal map points.
+- Dark neutral surfaces with restrained pink selection and near-white map points.
 - Flat filters and inline totals above divided list and map regions.
 - English and Simplified Chinese labels, readable measurements, and explicit interaction states.
 
@@ -107,7 +107,7 @@ The interface is compact and operational: dated journeys, measurements, and a da
 - **Focus pink — focus:** visible keyboard outline; upstream `--color-focus` aliases `--color-primary`.
 
 ### Secondary
-- **Soft teal — accent / accent-content:** start marker and map point circles.
+- **Soft teal — accent / accent-content:** start marker.
 - **Semantic red — error / error-content:** request failures, deletion text, and confirmed destructive action.
 - **Semantic green — success:** successful token changes.
 
@@ -115,7 +115,7 @@ The interface is compact and operational: dated journeys, measurements, and a da
 - **Raised charcoal — base-100:** inputs, workspace, notices, and map popups.
 - **Deep charcoal — base-200:** page background.
 - **Divider gray — base-300:** borders and row separators.
-- **Near white — base-content / text-muted:** text and supporting labels.
+- **Near white — base-content / text-muted:** text, supporting labels, and map point circles.
 - **Light wash — interactive-hover:** hovered rows and tabs.
 - **Dark veil — overlay:** native dialog backdrop.
 
@@ -135,11 +135,11 @@ At **1100px and below**, filters become three equal columns and summary gaps nar
 
 ## Elevation & Depth
 
-Page regions are flat, separated by borders and tonal surfaces. Preserve daisyUI's existing control depth (`--depth: 1`, `--noise: 0`), including its subtle button/input shadows, rather than adding decorative card elevation. Native dialog depth comes from the theme overlay. MapLibre supplies map controls and popup structure; app popup surfaces are themed.
+Page regions are flat, separated by borders and tonal surfaces. Preserve daisyUI's existing control depth (`--depth: 1`, `--noise: 0`), including its subtle button/input shadows, rather than adding decorative card elevation. Native dialog depth comes from the theme overlay. MapLibre supplies map controls and popup structure; app popup surfaces, directional tips, and close-button interaction states are themed. Measurements use a label/value grid and at most two decimal places, matching the point detail table.
 
 ## Shapes
 
-Selectors, fields, and containers use the upstream radius tokens, all currently gently rounded. Workspace overflow clips its internal list/map regions to the box radius. Borders use base-300. Endpoint markers are circles (28px) with a 2px base-100 border and localized start/end labels (S / E in English; 起 / 终 in Simplified Chinese). The line uses rounded joins and caps (4px); map point circles use a 4px radius.
+Selectors, fields, and containers use the upstream radius tokens, all currently gently rounded. Workspace overflow clips its internal list/map regions to the box radius. Borders use base-300. Endpoint markers are circles (28px) with a 2px base-100 border and localized start/end labels (S / E in English; 起 / 终 in Simplified Chinese). Selected lines use rounded joins and caps (4px); the overview uses 1.5px lines without points or endpoints. Selected map point circles use a 4px radius, increasing to 7px with a 2px dark stroke and pointer cursor on hover.
 
 ## Components
 
@@ -147,7 +147,7 @@ Selectors, fields, and containers use the upstream radius tokens, all currently 
 - **Language:** English (`en`) is the default; Simplified Chinese (`zh-CN`) is available through the native labelled select. Options use each locale’s own name from the extensible registry in `web/src/lib/locales/index.js`. Keyed per-language JSON catalogs drive reactive copy, document title/description, `html lang`, aria labels, map endpoints, popup labels, and MapLibre controls. The `aprs-language` browser-local preference is independent of deployment timezone; dates still use the server’s timezone.
 - **Fields:** real labels wrap native inputs and selects. Date inputs retain native date interaction; token input is password-masked. Field label/help spacing uses the upstream spacing properties.
 - **Navigation:** tabs use a base-300 divider, muted resting labels, hover wash, and primary text plus a 2px selected underline. `aria-selected`, linked tab panels, roving tabindex, arrows, Home, and End express state and keyboard navigation.
-- **Track rows:** full-width buttons with divided rows, wrapping measurements and monospace device hashes. Selected rows use the pink wash and primary ID, with `aria-pressed` exposing selection.
+- **Track rows:** compact full-width buttons with divided rows: ID and an ellipsized monospace device hash share the first line, followed by time range and wrapping measurements. The full device label is retained in the text and title. Selected rows use the pink wash and primary ID, with `aria-pressed` exposing selection. The newest track in the range is selected by default; clicking an overview line can select a track on another list page.
 - **Containers:** the single list/map workspace and token rows organize content without decorative cards. Summary totals remain inline. The token-count badge is the existing outline badge.
 - **Feedback:** alerts describe request errors; status messages identify loading/success and map failure. A failed map offers retry while list/statistics remain available. Point details use native `details` / `summary` and a scrolling table.
 - **Focus and confirmation:** app `:focus-visible` uses a 3px theme-focus outline with 3px offset; adapter fields retain their own focus treatment. Token deletion uses a labelled native `dialog`, opened with `showModal()`, providing modal focus handling and Escape dismissal, with explicit cancel and error-colored confirmation.

@@ -2,9 +2,9 @@
 	import { onMount, untrack } from 'svelte';
 	import { locale, t } from '$lib/i18n.js';
 	import { defaultLocale, locales, translate } from '$lib/locales/index.js';
-	import { formatTime } from './api.js';
+	import { formatMeasurement, formatTime } from './api.js';
 	import 'maplibre-gl/dist/maplibre-gl.css';
-	let { track = null, timezone = 'Asia/Shanghai' } = $props();
+	let { track = null, paths = [], onSelect = () => {}, timezone = 'Asia/Shanghai' } = $props();
 	let container = $state();
 	let map = $state.raw(null);
 	let ready = $state(false);
@@ -15,13 +15,27 @@
 	let timeout;
 	let disposed = false;
 	let generation = 0;
-	function fitTrack() {
-		if (!ready || !map || !track?.points.length) return;
-		const coordinates = track.points.map((point) => [point.longitude, point.latitude]);
-		const bounds = coordinates.reduce(
-			(bounds, coordinate) => bounds.extend(coordinate),
-			new lib.LngLatBounds(coordinates[0], coordinates[0])
-		);
+	let hoveredPoint = null;
+	let popup;
+	function hoverPoint(index = null) {
+		if (hoveredPoint === index) return;
+		if (hoveredPoint !== null)
+			map.setFeatureState({ source: 'track', id: hoveredPoint }, { hover: false });
+		hoveredPoint = index;
+		if (index !== null) map.setFeatureState({ source: 'track', id: index }, { hover: true });
+		map.getCanvas().style.cursor = index === null ? '' : 'pointer';
+	}
+	function fitRange() {
+		if (!ready || !map) return;
+		const routes = paths.length
+			? paths.map((path) => path.coordinates)
+			: track?.points?.length
+				? [track.points.map((point) => [point.longitude, point.latitude])]
+				: [];
+		if (!routes.length) return;
+		const first = routes[0][0];
+		const bounds = new lib.LngLatBounds(first, first);
+		for (const route of routes) for (const coordinate of route) bounds.extend(coordinate);
 		map.fitBounds(bounds, { padding: 60, maxZoom: 16, duration: 0 });
 	}
 	function themeColor(name) {
@@ -41,6 +55,8 @@
 		clearTimeout(timeout);
 		markers.forEach((marker) => marker.remove());
 		markers = [];
+		popup?.remove();
+		hoveredPoint = null;
 		map?.remove();
 		map = null;
 		try {
@@ -68,6 +84,41 @@
 			map.on('load', () => {
 				if (current !== generation) return;
 				clearTimeout(timeout);
+				map.addSource('overview', {
+					type: 'geojson',
+					data: { type: 'FeatureCollection', features: [] }
+				});
+				map.addLayer({
+					id: 'overview-line',
+					type: 'line',
+					source: 'overview',
+					layout: { 'line-cap': 'round', 'line-join': 'round' },
+					paint: {
+						'line-color': themeColor('--color-primary'),
+						'line-width': 1.5,
+						'line-opacity': 0.55
+					}
+				});
+				map.addLayer({
+					id: 'overview-hit',
+					type: 'line',
+					source: 'overview',
+					paint: {
+						'line-color': themeColor('--color-primary'),
+						'line-width': 12,
+						'line-opacity': 0.01
+					}
+				});
+				map.on('mousemove', 'overview-hit', () => {
+					map.getCanvas().style.cursor = 'pointer';
+				});
+				map.on('mouseleave', 'overview-hit', () => {
+					if (hoveredPoint === null) map.getCanvas().style.cursor = '';
+				});
+				map.on('click', 'overview-hit', (event) => {
+					const key = event.features?.[0]?.properties?.key;
+					if (key && key !== track?.key) onSelect(key, event.features[0].properties.page);
+				});
 				map.addSource('track', {
 					type: 'geojson',
 					data: { type: 'FeatureCollection', features: [] }
@@ -85,32 +136,43 @@
 					source: 'track',
 					filter: ['==', '$type', 'Point'],
 					paint: {
-						'circle-radius': 4,
-						'circle-color': themeColor('--color-accent'),
-						'circle-stroke-width': 1,
+						'circle-radius': ['case', ['boolean', ['feature-state', 'hover'], false], 7, 4],
+						'circle-color': themeColor('--color-base-content'),
+						'circle-stroke-width': ['case', ['boolean', ['feature-state', 'hover'], false], 2, 1],
 						'circle-stroke-color': themeColor('--color-base-100')
 					}
 				});
+				map.on('mousemove', 'track-points', (event) => {
+					hoverPoint(event.features?.[0]?.id ?? null);
+				});
+				map.on('mouseleave', 'track-points', () => hoverPoint());
 				map.on('click', 'track-points', (event) => {
 					const index = event.features?.[0]?.properties?.index;
 					const point = track?.points[index];
 					if (!point) return;
 					const content = document.createElement('div');
 					content.className = 'point-popup';
-					const lines = [
-						formatTime(point.timestamp_ms, timezone, $locale),
-						`${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)}`,
-						`${$t('point.accuracy')}: ${point.accuracy_m == null ? $t('point.unknown') : `${point.accuracy_m} m`}`,
-						`${$t('point.speed')}: ${point.speed_mps == null ? $t('point.unknown') : `${point.speed_mps} m/s`}`,
-						`${$t('point.altitude')}: ${point.altitude_m == null ? $t('point.unknown') : `${point.altitude_m} m`}`,
-						`${$t('point.bearing')}: ${point.bearing_deg == null ? $t('point.unknown') : `${point.bearing_deg}°`}`
-					];
-					lines.forEach((line) => {
-						const item = document.createElement('div');
-						item.textContent = line;
-						content.append(item);
+					const time = document.createElement('strong');
+					time.textContent = formatTime(point.timestamp_ms, timezone, $locale);
+					const coordinates = document.createElement('p');
+					coordinates.className = 'muted';
+					coordinates.textContent = `${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)}`;
+					const measurements = document.createElement('dl');
+					[
+						['point.accuracy', point.accuracy_m, 'm'],
+						['point.speed', point.speed_mps, 'm/s'],
+						['point.altitude', point.altitude_m, 'm'],
+						['point.bearing', point.bearing_deg, '°']
+					].forEach(([label, value, unit]) => {
+						const term = document.createElement('dt');
+						term.textContent = $t(label);
+						const detail = document.createElement('dd');
+						detail.textContent = formatMeasurement(value, unit, $locale, $t('point.unknown'));
+						measurements.append(term, detail);
 					});
-					new lib.Popup()
+					content.append(time, coordinates, measurements);
+					popup?.remove();
+					popup = new lib.Popup({ maxWidth: '300px', offset: 10 })
 						.setLngLat([point.longitude, point.latitude])
 						.setDOMContent(content)
 						.addTo(map);
@@ -133,7 +195,7 @@
 	onMount(() => {
 		const observer = new window.ResizeObserver(() => {
 			map?.resize();
-			fitTrack();
+			fitRange();
 		});
 		observer.observe(container);
 		return () => {
@@ -151,12 +213,26 @@
 	});
 	$effect(() => {
 		if (!ready || !map) return;
+		const features = paths.map((path) => ({
+			type: 'Feature',
+			properties: { key: path.key, page: path.page },
+			geometry: { type: 'LineString', coordinates: path.coordinates }
+		}));
+		map.getSource('overview').setData({ type: 'FeatureCollection', features });
+		fitRange();
+	});
+	$effect(() => {
+		if (!ready || !map) return;
 		markers.forEach((marker) => marker.remove());
 		markers = [];
+		popup?.remove();
+		hoverPoint();
+		map.removeFeatureState({ source: 'track' });
 		const points = track?.points || [];
 		const coordinates = points.map((point) => [point.longitude, point.latitude]);
 		const features = points.map((point, index) => ({
 			type: 'Feature',
+			id: index,
 			properties: { index },
 			geometry: { type: 'Point', coordinates: [point.longitude, point.latitude] }
 		}));
@@ -168,7 +244,7 @@
 			});
 		map.getSource('track').setData({ type: 'FeatureCollection', features });
 		if (!coordinates.length) return;
-		fitTrack();
+		if (!paths.length) fitRange();
 		[0, points.length - 1]
 			.filter((value, index, all) => all.indexOf(value) === index)
 			.forEach((index) => {
