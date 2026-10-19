@@ -150,6 +150,35 @@ Location uploads return `{"ok":true}`. Deduplication uses `(id, device_hash, ses
 
 Android must implement this protocol to upload successfully. Updating the server alone does not generate session IDs on the phone. This server targets a fresh database; no earlier payload or database schema is supported.
 
+### Complete-track import API
+
+`POST /api/import` imports one complete historical track as a JSON array. Use a registered `Authorization: Bearer <token>` and `Content-Type: application/json`; no browser login is required.
+
+```json
+[
+  {"type":"location","id":"geojson","device_hash":"0123456789abcdef","session_id":"","timestamp_ms":1767225600000,"latitude":31.2304,"longitude":121.4737,"altitude_m":12},
+  {"type":"location","id":"geojson","device_hash":"0123456789abcdef","session_id":"","timestamp_ms":1767225660000,"latitude":31.2314,"longitude":121.4747,"altitude_m":13}
+]
+```
+
+- Submit 1–2000 points, at most 2 MiB per request. Every point must have `type: "location"`, the same `id` and `device_hash`, and strictly increasing millisecond timestamps (no repeated timestamps). Other location validation matches the webhook.
+- `session_id` may be omitted, `null`, or empty. All nonempty IDs must be the same canonical lowercase UUID v4; empty values inherit it. If all are empty, the server generates one UUID v4 for the whole track and returns it.
+- Duplicates match the **first and last timestamps and exact latitude/longitude** of an existing session with the same `id` and `device_hash`, ignoring the submitted session ID. A single-point track uses the same point for both endpoints. No points are written for duplicates. Intermediate points and optional fields are not compared; identical endpoints with different intermediate points still count as duplicates.
+- An existing supplied session with different endpoints returns HTTP 409 to prevent merging complete tracks. Any validation or storage failure imports nothing; points are never partially committed.
+- HTTP 200 success: `{"ok":true,"duplicate":false,"session_id":"<uuid>","inserted":2}`. HTTP 200 duplicate: `{"ok":true,"duplicate":true,"session_id":"<existing-uuid>","inserted":0}`.
+- Invalid arrays, counts, fields, ordering, or sessions return 400. Location/source/ordering errors include a zero-based `index`. Wrong Content-Type returns 415, invalid tokens 401, session conflicts 409, and storage failures 503. Errors include `error` and `code`, as with other APIs.
+
+Save the converted array as `track.json`, then call once per track:
+
+```sh
+curl --fail-with-body https://tracks.example.com/api/import \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  --data-binary @track.json
+```
+
+Retry the same payload after a timeout or 503: endpoint detection handles committed requests even without a supplied session ID. Map GeoJSON `[longitude, latitude]` to the corresponding fields and provide per-point millisecond timestamps.
+
 ## Tracks and statistics
 
 - A track consists of all received points with the same `(id, device_hash, session_id)`, sorted by measured timestamp. Different sessions remain separate even with overlapping or identical timestamps. The same session stays together across gaps of any length; there is no 30-minute fallback or start/end state.

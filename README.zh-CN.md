@@ -150,6 +150,35 @@ Android 推荐在开始记录时调用 `java.util.UUID.randomUUID().toString()` 
 
 Android 必须实现此协议才能成功上传，仅更新服务端不会让手机自动生成会话 ID。本服务端面向全新数据库，不兼容以前的请求格式或数据库结构。
 
+### 整条路径导入 API
+
+`POST /api/import` 用于历史路径导入，每次提交一个 JSON 数组，代表一条完整路径。使用已登记的 `Authorization: Bearer <token>`，请求头为 `Content-Type: application/json`；无需网页登录。
+
+```json
+[
+  {"type":"location","id":"geojson","device_hash":"0123456789abcdef","session_id":"","timestamp_ms":1767225600000,"latitude":31.2304,"longitude":121.4737,"altitude_m":12},
+  {"type":"location","id":"geojson","device_hash":"0123456789abcdef","session_id":"","timestamp_ms":1767225660000,"latitude":31.2314,"longitude":121.4747,"altitude_m":13}
+]
+```
+
+- 每次1至2000点，请求体最多2 MiB。所有点必须是 `location`，使用相同的 `id`、`device_hash`，按 `timestamp_ms` 严格递增排列，不允许重复时间戳。其他定位字段的校验与 webhook 相同。
+- `session_id` 可省略、为 `null` 或空字符串。所有非空值必须是同一个标准小写 UUID v4；空值沿用该值。全部为空时，后端为整条路径生成一个 UUID v4，并在响应中返回。
+- 按相同 `id`、`device_hash` 下某条已有会话的**首尾时间戳和经纬度完全相等**判重，忽略传入的 `session_id`。单点路径的首尾是同一个点。重复导入返回已有会话 ID，不写入任何点。
+- 首尾不同但指定会话已存在时返回409，防止将完整路径混入已有会话。任意校验或数据库写入失败，整条路径都不导入；不会跳过坏点或部分提交。
+- 成功返回 HTTP 200：`{"ok":true,"duplicate":false,"session_id":"<uuid>","inserted":2}`；重复返回 HTTP 200：`{"ok":true,"duplicate":true,"session_id":"<existing-uuid>","inserted":0}`。
+- 无效数组、点数、字段、时间顺序或会话返回400；定位/来源/顺序错误还返回从0开始的 `index`。Content-Type 错误返回415，token 无效返回401，会话冲突返回409，存储失败返回503。错误包含 `error` 和 `code`，与其他 API 一致。
+
+将转换后的数组保存为 `track.json`，每条路径分别调用：
+
+```sh
+curl --fail-with-body https://tracks.example.com/api/import \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  --data-binary @track.json
+```
+
+请求超时或503后可原样重试；即使未指定 session_id，已提交路径也会由首尾判重。GeoJSON 坐标为 `[longitude, latitude]`，需映射到对应字段，并提供逐点毫秒时间戳。首尾判重不比较中间点和可选字段；首尾相同但中间不同的路径也会被视为重复。
+
 ## 路径与统计怎么算
 
 - 相同 `(id, device_hash, session_id)` 的所有已收到定位点组成一条路径，按定位时间排序。不同会话即使时间重叠或时间戳相同也不合并；同一会话中间断档多久都不拆分，不再使用30分钟保底或起止标记状态。
