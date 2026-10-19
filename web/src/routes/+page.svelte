@@ -11,6 +11,7 @@
 	} from '$lib/api.js';
 	import TrackMap from '$lib/TrackMap.svelte';
 	import Tokens from '$lib/Tokens.svelte';
+	import { blankClick } from '$lib/blankClick.js';
 	let state = $state(null),
 		error = $state(''),
 		username = $state(''),
@@ -140,6 +141,12 @@
 	function changePage(nextPage) {
 		page = nextPage;
 		data = { ...data, tracks: data.all_tracks.slice((page - 1) * 50, page * 50) };
+	}
+	function deselect() {
+		detailVersion++;
+		selected = null;
+		selectedKey = '';
+		detailLoading = false;
 	}
 	function choosePath(key, targetPage) {
 		choose({ key });
@@ -365,7 +372,12 @@
 						</p>
 					</div>
 					<div class="workspace">
-						<section class="track-list" aria-label={$t('tracks.list')} aria-busy={loading}>
+						<section
+							class="track-list"
+							aria-label={$t('tracks.list')}
+							aria-busy={loading}
+							use:blankClick={deselect}
+						>
 							<div class="list-heading">
 								<h2>{$t('tracks.list')}</h2>
 								<span class="muted small"
@@ -436,7 +448,13 @@
 										: $t('tracks.select')}</span
 								>
 							</div>
-							<TrackMap track={selected} {paths} onSelect={choosePath} timezone={state.timezone} />
+							<TrackMap
+								track={selected}
+								{paths}
+								onSelect={choosePath}
+								onDeselect={deselect}
+								timezone={state.timezone}
+							/>
 							{#if selected}<details class="point-details">
 									<summary>{$t('point.details', { count: selected.point_count })}</summary>
 									<div class="point-table-scroll">
