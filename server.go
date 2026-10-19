@@ -30,11 +30,14 @@ func fail(w http.ResponseWriter, status int, message string) {
 	respond(w, status, map[string]string{"error": message, "code": code})
 }
 func decode(w http.ResponseWriter, r *http.Request, value any) bool {
+	return decodeLimit(w, r, value, 16<<10)
+}
+func decodeLimit(w http.ResponseWriter, r *http.Request, value any, limit int64) bool {
 	if !strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "application/json") {
 		fail(w, 415, "请使用 application/json")
 		return false
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
 	d := json.NewDecoder(r.Body)
 	if err := d.Decode(value); err != nil {
 		fail(w, 400, "JSON 格式无效或请求过大")
@@ -61,6 +64,7 @@ func (a *app) handler() http.Handler {
 	mux.HandleFunc("POST /api/login", a.authWrite(a.login))
 	mux.HandleFunc("POST /api/logout", a.private(a.logout))
 	mux.HandleFunc("POST /api/webhook", a.webhook)
+	mux.HandleFunc("POST /api/import", a.importTrack)
 	mux.HandleFunc("GET /api/tokens", a.private(a.listTokens))
 	mux.HandleFunc("POST /api/tokens", a.private(a.addToken))
 	mux.HandleFunc("PATCH /api/tokens/{key}", a.private(a.editToken))
@@ -379,6 +383,9 @@ func mutationResult(w http.ResponseWriter, result sql.Result, err error) {
 func finite(value *float64) bool {
 	return value == nil || (!math.IsNaN(*value) && !math.IsInf(*value, 0))
 }
+func validLocation(p point) bool {
+	return !(strings.TrimSpace(p.ID) == "" || utf8.RuneCountInString(p.ID) > 128 || !devicePattern.MatchString(p.Device) || p.Time <= 0 || p.Time > time.Now().Add(5*time.Minute).UnixMilli() || p.Lat == nil || p.Lon == nil || !finite(p.Lat) || !finite(p.Lon) || *p.Lat < -90 || *p.Lat > 90 || *p.Lon < -180 || *p.Lon > 180 || !finite(p.Accuracy) || !finite(p.Speed) || !finite(p.Bearing) || !finite(p.Altitude) || (p.Accuracy != nil && *p.Accuracy < 0) || (p.Speed != nil && *p.Speed < 0) || (p.Bearing != nil && (*p.Bearing < 0 || *p.Bearing >= 360)))
+}
 func (a *app) webhook(w http.ResponseWriter, r *http.Request) {
 	header := r.Header.Get("Authorization")
 	if !strings.HasPrefix(header, "Bearer ") || !tokenPattern.MatchString(strings.TrimPrefix(header, "Bearer ")) {
@@ -397,7 +404,7 @@ func (a *app) webhook(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "session_id 必须为标准小写 UUID v4")
 		return
 	}
-	if p.Type != "test" && (strings.TrimSpace(p.ID) == "" || utf8.RuneCountInString(p.ID) > 128 || !devicePattern.MatchString(p.Device) || p.Time <= 0 || p.Time > time.Now().Add(5*time.Minute).UnixMilli() || p.Lat == nil || p.Lon == nil || !finite(p.Lat) || !finite(p.Lon) || *p.Lat < -90 || *p.Lat > 90 || *p.Lon < -180 || *p.Lon > 180 || !finite(p.Accuracy) || !finite(p.Speed) || !finite(p.Bearing) || !finite(p.Altitude) || (p.Accuracy != nil && *p.Accuracy < 0) || (p.Speed != nil && *p.Speed < 0) || (p.Bearing != nil && (*p.Bearing < 0 || *p.Bearing >= 360))) {
+	if p.Type != "test" && !validLocation(p) {
 		fail(w, 400, "定位字段缺失或超出有效范围")
 		return
 	}

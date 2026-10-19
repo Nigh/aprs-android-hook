@@ -156,5 +156,9 @@
 	"tokens.copyURL": "Copy URL",
 	"tokens.webhookHelp": "Paste this complete URL into Settings → Webhook in aprs-android, then run Test.",
 	"success.webhookCopied": "Webhook URL copied.",
-	"error.webhookCopy": "Could not copy the URL. Select and copy the address manually."
+	"error.webhookCopy": "Could not copy the URL. Select and copy the address manually.",
+	"error.importSize": "Each import must contain 1–2000 location points.",
+	"error.importSession": "session_id must be empty or the same canonical lowercase UUID v4.",
+	"error.importConflict": "The import session already exists with different endpoints.",
+	"error.importPoint": "Import points must be valid, share one source, and have strictly increasing timestamps."
 }
