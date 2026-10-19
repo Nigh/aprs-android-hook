@@ -4,7 +4,13 @@
 	import { defaultLocale, locales, translate } from '$lib/locales/index.js';
 	import { formatMeasurement, formatTime } from './api.js';
 	import 'maplibre-gl/dist/maplibre-gl.css';
-	let { track = null, paths = [], onSelect = () => {}, timezone = 'Asia/Shanghai' } = $props();
+	let {
+		track = null,
+		paths = [],
+		onSelect = () => {},
+		onDeselect = () => {},
+		timezone = 'Asia/Shanghai'
+	} = $props();
 	let container = $state();
 	let map = $state.raw(null);
 	let ready = $state(false);
@@ -176,6 +182,17 @@
 						.setLngLat([point.longitude, point.latitude])
 						.setDOMContent(content)
 						.addTo(map);
+				});
+				let dragged = false;
+				map.on('mousedown', () => (dragged = false));
+				map.on('touchstart', () => (dragged = false));
+				map.on('dragstart', () => (dragged = true));
+				map.on('click', (event) => {
+					if (dragged || event.originalEvent.target !== map.getCanvas()) return;
+					const features = map.queryRenderedFeatures(event.point, {
+						layers: ['overview-hit', 'track-line', 'track-points']
+					});
+					if (!features.length) onDeselect();
 				});
 				ready = true;
 				loading = false;
