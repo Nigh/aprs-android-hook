@@ -150,5 +150,9 @@
 	"tokens.copyURL": "复制地址",
 	"tokens.webhookHelp": "将此完整地址粘贴到 aprs-android 的设置 → Webhook 中，然后点击 Test。",
 	"success.webhookCopied": "Webhook 地址已复制",
-	"error.webhookCopy": "无法复制地址，请手动选择并复制上方地址。"
+	"error.webhookCopy": "无法复制地址，请手动选择并复制上方地址。",
+	"error.importSize": "每次导入必须包含1至2000个定位点。",
+	"error.importSession": "session_id 必须为空或为同一个标准小写 UUID v4。",
+	"error.importConflict": "导入会话已存在且首尾点不匹配。",
+	"error.importPoint": "导入点必须有效、属于同一来源且时间严格递增。"
 }
